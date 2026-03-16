@@ -51,6 +51,9 @@ Processed Video Returned
 
 # 📦 Project Structure
 
+# 📦 Project Structure
+
+```bash
 see2sound-backend/
 │
 ├── app/                # API application
@@ -75,6 +78,7 @@ see2sound-backend/
 │
 ├── requirements.txt
 └── README.md
+```
 
 ---
 
