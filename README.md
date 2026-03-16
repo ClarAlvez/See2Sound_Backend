@@ -51,8 +51,6 @@ Processed Video Returned
 
 # 📦 Project Structure
 
-# 📦 Project Structure
-
 ```bash
 see2sound-backend/
 │
