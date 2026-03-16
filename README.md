@@ -140,6 +140,14 @@ This project is built with a focus on **digital accessibility**, helping visuall
 
 ---
 
+## 🔗 Related Repositories
+
+This project is part of the **See2Sound system**.
+
+- 🌐 Frontend (Web Interface)  → https://github.com/ClarAlvez/See2Sound_Frontend
+
+---
+
 # 👨‍💻 Authors
 
 Developed as part of the **See2Sound Project**.
