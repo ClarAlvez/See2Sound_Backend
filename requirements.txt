@@ -1,0 +1,5 @@
+opencv-python
+moviepy
+numpy
+ffmpeg-python
+pytest
