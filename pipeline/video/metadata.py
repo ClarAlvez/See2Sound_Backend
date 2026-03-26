@@ -3,39 +3,12 @@ from typing import Any, Dict
 
 import cv2
 
-def validate_video_path(video_path: str) -> Path:
-    """
-    Valida se o caminho do vídeo existe e é um arquivo.
-    """
-    path = Path(video_path)
-
-    if not path.exists():
-        raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
-
-    if not path.is_file():
-        raise ValueError(f"O caminho informado não é um arquivo: {video_path}")
-
-    return path
-
-
-def open_video_capture(video_path: Path) -> cv2.VideoCapture:
-    """
-    Abre o vídeo com OpenCV e garante que ele foi carregado corretamente.
-    """
-    capture = cv2.VideoCapture(str(video_path))
-
-    if not capture.isOpened():
-        raise ValueError(f"Não foi possível abrir o vídeo: {video_path}")
-
-    return capture
-
-
-def get_fps(capture: cv2.VideoCapture) -> float:
-    """
-    Retorna o FPS do vídeo.
-    """
-    return float(capture.get(cv2.CAP_PROP_FPS))
-
+from pipeline.video.loader import (
+    validate_video_path,
+    open_video_capture,
+    get_video_fps,
+    release_video_capture,
+)
 
 def get_total_frames(capture: cv2.VideoCapture) -> int:
     """
@@ -94,7 +67,7 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
     capture = open_video_capture(path)
 
     try:
-        fps = get_fps(capture)
+        fps = get_video_fps(capture)
         total_frames = get_total_frames(capture)
         width, height = get_frame_dimensions(capture)
         duration_seconds = calculate_duration_seconds(total_frames, fps)
@@ -111,4 +84,4 @@ def get_video_metadata(video_path: str) -> Dict[str, Any]:
         return metadata
 
     finally:
-        capture.release()
+        release_video_capture(capture)
