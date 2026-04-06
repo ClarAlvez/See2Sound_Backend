@@ -3,3 +3,4 @@ moviepy
 numpy
 ffmpeg-python
 pytest
+faster-whisper
