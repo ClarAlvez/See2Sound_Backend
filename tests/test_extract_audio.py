@@ -4,7 +4,7 @@ from pipeline.audio.extractor import extract_audio
 
 def test_should_create_audio_file():
     result = extract_audio(
-        video_path="data/raw_videos/teste.mp4",
+        video_path="data/raw_videos/teste2.mp4",
         output_dir="data/extracted_audio"
     )
 
