@@ -13,7 +13,10 @@ def ensure_output_directory(output_dir: str) -> Path:
     return path
 
 
-def build_json_output_path(output_dir: Path, file_name: str = "process_video_result.json") -> Path:
+def build_json_output_path(
+    output_dir: Path,
+    file_name: str = "process_video_result.json"
+) -> Path:
     """
     Monta o caminho do arquivo JSON de saída.
     """
@@ -45,7 +48,46 @@ def test_process_video_pipeline():
     assert result["metadata"]["total_frames"] > 0
     assert result["metadata"]["fps"] > 0
 
-    assert Path(result["audio"]["audio_file_path"]).exists()
+    assert "extraction" in result["audio"]
+    assert "speech_analysis" in result["audio"]
+
+    audio_extraction = result["audio"]["extraction"]
+
+    possible_audio_keys = [
+        "audio_path",
+        "audio_file_path",
+        "output_audio_path",
+    ]
+
+    audio_path = None
+    for key in possible_audio_keys:
+        if key in audio_extraction:
+            audio_path = Path(audio_extraction[key])
+            break
+
+    assert audio_path is not None, "Nenhuma chave de caminho de áudio encontrada"
+    assert audio_path.exists()
+
+    speech_analysis = result["audio"]["speech_analysis"]
+
+    assert "language" in speech_analysis
+    assert "speech_segments" in speech_analysis
+    assert "speech_pauses" in speech_analysis
+    assert "stats" in speech_analysis
+
+    assert isinstance(speech_analysis["speech_segments"], list)
+    assert isinstance(speech_analysis["speech_pauses"], list)
+
+    assert speech_analysis["stats"]["total_segments"] >= 0
+
+    if speech_analysis["speech_segments"]:
+        first_segment = speech_analysis["speech_segments"][0]
+
+        assert "start" in first_segment
+        assert "end" in first_segment
+        assert "text" in first_segment
+        assert "duration" in first_segment
+
     assert Path(result["frames"]["frames_output_dir"]).exists()
     assert result["frames"]["saved_frames_count"] > 0
 

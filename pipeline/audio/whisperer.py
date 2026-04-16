@@ -40,7 +40,7 @@ class WhisperPauseDetector:
 
     def __init__(
         self,
-        model_size: str = "medium",
+        model_size: str = "small",
         device: str = "cpu",
         compute_type: str = "int8",
     ) -> None:
