@@ -4,3 +4,7 @@ numpy
 ffmpeg-python
 pytest
 faster-whisper
+torch
+transformers
+pillow
+pandas

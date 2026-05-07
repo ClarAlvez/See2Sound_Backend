@@ -33,7 +33,7 @@ def save_result_to_json(result: dict, output_path: Path) -> None:
 
 def test_process_video_pipeline():
     result = process_video(
-        video_path="data/raw_videos/teste.mp4",
+        video_path="data/raw_videos/novo.mp4",
         output_base_dir="data/output",
         frame_interval_seconds=1.0,
         scene_threshold=20.0,
