@@ -6,7 +6,7 @@ The backend is responsible for processing videos, running AI modules, generating
 
 ---
 
-# 🚀 Project Goal
+## 🚀 Project Goal
 
 See2Sound aims to make digital media more accessible by automatically generating **audio descriptions for videos** using artificial intelligence.
 
@@ -14,7 +14,7 @@ Instead of manually describing visual scenes, the system analyzes the video and 
 
 ---
 
-# 🧠 System Responsibilities
+## 🧠 System Responsibilities
 
 The backend handles the core logic of the system:
 
@@ -29,7 +29,7 @@ The backend handles the core logic of the system:
 
 ---
 
-# ⚙️ Architecture Overview
+## ⚙️ Architecture Overview
 
 User
 ↓
@@ -50,7 +50,7 @@ Processed Media Returned
 
 ---
 
-# 📦 Project Structure
+## 📦 Project Structure
 
 ```bash
 see2sound-backend/
@@ -81,7 +81,7 @@ see2sound-backend/
 
 ---
 
-# 🛠 Technologies
+## 🛠 Technologies
 
 Main technologies used in this project:
 
@@ -96,7 +96,7 @@ Main technologies used in this project:
 
 ---
 
-# 🔬 AI Modules
+## 🔬 AI Modules
 
 The backend integrates multiple AI components responsible for analyzing video, understanding context, generating narration and producing the final audio description.
 
@@ -128,7 +128,7 @@ This module is responsible for transforming text-based descriptions into an audi
 
 ---
 
-# 🧪 Testing
+## 🧪 Testing
 
 Testing includes:
 
@@ -139,13 +139,13 @@ Testing includes:
 
 ---
 
-# 🚧 Development Status
+## 🚧 Development Status
 
 🚧 Project currently under development as part of a technical research project.
 
 ---
 
-# 🎯 Future Goals
+## 🎯 Future Goals
 
 - Improve scene understanding accuracy
 - Support longer videos
@@ -157,7 +157,7 @@ Testing includes:
 
 ---
 
-# ❤️ Accessibility First
+## ❤️ Accessibility First
 
 This project is built with a focus on **digital accessibility**, helping visually impaired users better understand visual media.
 
@@ -172,7 +172,7 @@ This project is part of the **See2Sound system**.
 
 ---
 
-# 👨‍💻 Authors
+## 👨‍💻 Authors
 
 Developed as part of the **See2Sound Project**.
 
