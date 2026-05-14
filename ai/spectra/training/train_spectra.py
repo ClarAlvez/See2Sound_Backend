@@ -10,7 +10,7 @@ from ai.spectra.label_sets import SPECTRA_LABELS
 from ai.spectra.network import SpectraNet
 
 
-DATASET_PATH = Path("data/datasets/spectra_labels.csv")
+DATASET_PATH = Path("data/datasets/spectra_auto_labels.csv")
 MODEL_OUTPUT_PATH = Path("data/models/spectra_net.pt")
 
 

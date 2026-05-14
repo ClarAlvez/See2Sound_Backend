@@ -8,3 +8,4 @@ torch
 transformers
 pillow
 pandas
+yt-dlp

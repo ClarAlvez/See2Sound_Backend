@@ -40,7 +40,6 @@ ACTION_LABELS = [
     "falling",
     "pointing",
     "smiling",
-    "crying",
     "opening",
     "showing",
 ]
@@ -74,17 +73,9 @@ COMPOSITION_LABELS = [
     "empty_scene",
 ]
 
-EXPRESSION_LABELS = [
-    "happy_expression",
-    "serious_expression",
-    "surprised_expression",
-    "sad_expression",
-]
-
 SPECTRA_LABELS = (
     OBJECT_LABELS
     + ACTION_LABELS
     + SCENARIO_LABELS
     + COMPOSITION_LABELS
-    + EXPRESSION_LABELS
 )
