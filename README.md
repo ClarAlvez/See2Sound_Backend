@@ -31,6 +31,7 @@ The backend handles the core logic of the system:
 
 ## ⚙️ Architecture Overview
 
+```text
 User
 ↓
 See2Sound App
@@ -46,7 +47,8 @@ AI Modules
 ↓
 Audio Description Generation
 ↓
-Processed Media Returned  
+Processed Media Returned
+```
 
 ---
 
