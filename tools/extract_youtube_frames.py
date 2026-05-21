@@ -171,4 +171,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# rodar: python -m tools.extract_youtube_frames "https://www.youtube.com/watch?v=LINK_DO_VIDEO" --name corrida --interval 2 --max-frames 80
+# rodar: python -m tools.extract_youtube_frames "https://www.youtube.com/watch?v=GscDiA9k-fA" --name corrida --interval 2 --max-frames 80

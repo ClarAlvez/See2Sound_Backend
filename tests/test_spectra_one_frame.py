@@ -6,7 +6,7 @@ predictor = SpectraPredictor(
 )
 
 result = predictor.predict_frame(
-    "data/output/frames/novo_frame_000000.jpg",
+    "data/test_frames/video_teste_cachorro.jpg",
     top_k=10
 )
 

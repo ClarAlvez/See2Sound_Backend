@@ -9,3 +9,6 @@ transformers
 pillow
 pandas
 yt-dlp
+torchvision
+matplotlib
+scikit-learn
