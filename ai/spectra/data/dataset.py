@@ -5,25 +5,40 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from ai.spectra.labels.label_sets import SPECTRA_LABELS
+from ai.spectra.labels.label_sets import get_labels_for_task
 
 
 class SpectraImageDataset(Dataset):
     """
-    Dataset de imagens da Spectra.
+    Dataset genérico da Spectra.
 
-    Cada item do dataset retorna:
-    - image: tensor da imagem processada
-    - labels: tensor multilabel com 0 e 1
+    Pode ser usado para:
+    - scene
+    - person
+    - object
+    - all
 
     O CSV precisa ter:
-    - uma coluna frame_path
-    - uma coluna para cada label presente em SPECTRA_LABELS
+    - frame_path
+    - uma coluna para cada label usada na task escolhida
     """
 
-    def __init__(self, csv_path, transform=None, image_root_dir=None):
+    def __init__(
+        self,
+        csv_path,
+        transform=None,
+        image_root_dir=None,
+        task_name="scene",
+        label_columns=None,
+    ):
         self.csv_path = Path(csv_path)
         self.transform = transform
+        self.task_name = task_name
+
+        if label_columns is None:
+            self.label_columns = get_labels_for_task(task_name)
+        else:
+            self.label_columns = label_columns
 
         if image_root_dir is not None:
             self.image_root_dir = Path(image_root_dir)
@@ -58,19 +73,13 @@ class SpectraImageDataset(Dataset):
             image = self.transform(image)
 
         labels = torch.tensor(
-            [float(row[label]) for label in SPECTRA_LABELS],
+            [float(row[label]) for label in self.label_columns],
             dtype=torch.float32
         )
 
         return image, labels
 
     def _resolve_image_path(self, frame_path):
-        """
-        Resolve o caminho da imagem.
-
-        Se image_root_dir for informado, caminhos relativos serão considerados
-        a partir dessa pasta. Caso contrário, usa o caminho do CSV diretamente.
-        """
         image_path = Path(frame_path)
 
         if image_path.is_absolute():
@@ -82,7 +91,7 @@ class SpectraImageDataset(Dataset):
         return image_path
 
     def _validate_columns(self):
-        required_columns = ["frame_path"] + SPECTRA_LABELS
+        required_columns = ["frame_path"] + self.label_columns
 
         missing_columns = [
             column
@@ -96,14 +105,12 @@ class SpectraImageDataset(Dataset):
             )
 
     def get_labels_count(self):
-        """
-        Retorna quantos exemplos positivos existem para cada label.
-
-        Isso ajuda a descobrir labels quase vazias no dataset.
-        """
         counts = {}
 
-        for label in SPECTRA_LABELS:
+        for label in self.label_columns:
             counts[label] = int(self.dataframe[label].sum())
 
         return counts
+
+    def get_label_columns(self):
+        return self.label_columns

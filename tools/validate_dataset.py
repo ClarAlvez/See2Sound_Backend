@@ -1,6 +1,6 @@
 import pandas as pd
 
-csv_path = "data/datasets/spectra_auto_labels_margin_v2.csv"
+csv_path = "data/datasets/spectra_scene_labels.csv"
 
 df = pd.read_csv(csv_path)
 
@@ -20,7 +20,10 @@ total = len(df)
 print("Total de frames:", total)
 
 print("\nLabels mais frequentes:")
-print(counts.head(40))
+print(counts.head(50))
+
+print("\nLabels menos frequentes:")
+print(counts.tail(50))
 
 print("\nLabels zeradas:")
 print(list(counts[counts == 0].index))
@@ -33,3 +36,6 @@ print(df[label_cols].sum(axis=1).mean())
 
 print("\nDistribuição de labels positivas por frame:")
 print(df[label_cols].sum(axis=1).describe())
+
+print("\nVídeos únicos:")
+print(df["source_video_id"].nunique())

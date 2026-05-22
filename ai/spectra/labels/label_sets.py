@@ -1,30 +1,159 @@
 """
-Conjunto de labels da Spectra.
+Label sets da Spectra.
 
-A Spectra utiliza classificação multilabel, ou seja, uma mesma imagem pode
-possuir várias labels verdadeiras ao mesmo tempo.
+A Spectra é dividida em submodelos:
 
-Exemplo:
-    Uma pessoa sentada em uma cozinha durante o dia pode ativar:
-    - person
-    - sitting
-    - kitchen
-    - indoor
-    - day
-    - medium_shot
+- SpectraSceneNet:
+    Analisa o frame inteiro.
+
+- SpectraPersonNet:
+    Analisa recortes de pessoas.
+
+- SpectraObjectNet:
+    Analisa objetos importantes.
+
+- SpectraCorrelationNet:
+    Relaciona cena, pessoa, objeto e fala ao longo do tempo.
 """
 
-PERSON_LABELS = [
+
+# ============================================================
+# 1. Labels do modelo de cena
+# ============================================================
+
+SCENE_ENVIRONMENT_LABELS = [
+    "indoor",
+    "outdoor",
+    "room",
+    "street",
+    "school",
+    "classroom",
+    "kitchen",
+    "bedroom",
+    "living_room",
+    "office",
+    "forest",
+    "city",
+    "sports_field",
+    "beach",
+    "park",
+    "store",
+    "restaurant",
+    "hospital",
+]
+
+SCENE_LIGHTING_LABELS = [
+    "dark_place",
+    "bright_place",
+    "day",
+    "night",
+]
+
+SCENE_COMPOSITION_LABELS = [
+    "close_up",
+    "medium_shot",
+    "wide_shot",
+    "empty_scene",
+    "one_person",
+    "two_people",
+    "group_of_people",
+    "crowded_scene",
+]
+
+SCENE_STATE_LABELS = [
+    "calm_scene",
+    "action_scene",
+    "conversation_scene",
+    "movement_scene",
+]
+
+SCENE_ACTION_HINT_LABELS = [
+    "walking",
+    "running",
+    "sitting",
+    "standing",
+    "working",
+    "playing",
+    "driving",
+    "dancing",
+    "eating",
+    "drinking",
+]
+
+SPECTRA_SCENE_LABELS = (
+    SCENE_ENVIRONMENT_LABELS
+    + SCENE_LIGHTING_LABELS
+    + SCENE_COMPOSITION_LABELS
+    + SCENE_STATE_LABELS
+    + SCENE_ACTION_HINT_LABELS
+)
+
+
+# ============================================================
+# 2. Labels do modelo de pessoa
+# ============================================================
+
+PERSON_BODY_LABELS = [
     "person",
-    "face",
-    "hand",
+    "face_visible",
+    "hand_visible",
     "man",
     "woman",
     "child",
-    "group_of_people",
 ]
 
-COMMON_OBJECT_LABELS = [
+PERSON_HAIR_LABELS = [
+    "blonde_hair",
+    "brown_hair",
+    "black_hair",
+    "red_hair",
+    "gray_hair",
+    "short_hair",
+    "long_hair",
+    "curly_hair",
+    "straight_hair",
+]
+
+PERSON_CLOTHING_LABELS = [
+    "red_clothes",
+    "blue_clothes",
+    "black_clothes",
+    "white_clothes",
+    "green_clothes",
+    "yellow_clothes",
+    "dress",
+    "shirt",
+    "jacket",
+]
+
+PERSON_ACCESSORY_LABELS = [
+    "glasses",
+    "hat",
+    "cap",
+    "backpack",
+    "bag",
+]
+
+PERSON_SKIN_TONE_LABELS = [
+    "light_skin",
+    "medium_skin",
+    "dark_skin",
+]
+
+SPECTRA_PERSON_LABELS = (
+    PERSON_BODY_LABELS
+    + PERSON_HAIR_LABELS
+    + PERSON_CLOTHING_LABELS
+    + PERSON_ACCESSORY_LABELS
+    + PERSON_SKIN_TONE_LABELS
+)
+
+
+# ============================================================
+# 3. Labels do modelo de objetos
+# ============================================================
+
+OBJECT_COMMON_LABELS = [
     "book",
     "table",
     "chair",
@@ -46,212 +175,106 @@ COMMON_OBJECT_LABELS = [
     "food",
     "cup",
     "bottle",
-    "bag",
-    "backpack",
-    "weapon",
-    "knife",
-    "ball",
-    "toy",
-    "paper",
     "box",
+    "paper",
+    "toy",
 ]
 
-SPECIFIC_OBJECT_LABELS = [
+OBJECT_NARRATIVE_LABELS = [
+    "glasses",
+    "knife",
+    "weapon",
+    "key",
+    "letter",
+    "document",
+    "photo",
+    "blood",
+    "bag",
+    "backpack",
+    "book",
+    "phone",
+]
+
+OBJECT_SPECIFIC_LABELS = [
     "dice",
     "miniature",
     "board_game",
     "musical_instrument",
-    "cap",
     "subtitles",
     "on_screen_text",
 ]
 
-ACTION_LABELS = [
-    "sitting",
-    "standing",
-    "walking",
-    "running",
-    "talking",
-    "looking",
-    "holding",
-    "reading",
-    "writing",
-    "playing",
-    "fighting",
-    "falling",
-    "jumping",
-    "pointing",
-    "smiling",
-    "crying",
-    "opening",
-    "closing",
-    "showing",
-    "eating",
-    "drinking",
-    "driving",
-    "dancing",
-    "working",
-]
+SPECTRA_OBJECT_LABELS = (
+    OBJECT_COMMON_LABELS
+    + OBJECT_NARRATIVE_LABELS
+    + OBJECT_SPECIFIC_LABELS
+)
 
-SCENARIO_LABELS = [
-    "indoor",
-    "outdoor",
-    "room",
-    "street",
-    "school",
-    "classroom",
-    "kitchen",
-    "bedroom",
-    "living_room",
-    "office",
-    "forest",
-    "city",
-    "sports_field",
-    "beach",
-    "park",
-    "store",
-    "restaurant",
-    "hospital",
-    "dark_place",
-    "bright_place",
-    "day",
-    "night",
-]
+# Remove duplicadas preservando ordem.
+SPECTRA_OBJECT_LABELS = list(dict.fromkeys(SPECTRA_OBJECT_LABELS))
 
-HAIR_LABELS = [
-    "blonde_hair",
-    "brown_hair",
-    "black_hair",
-    "red_hair",
-    "gray_hair",
-    "short_hair",
-    "long_hair",
-    "curly_hair",
-    "straight_hair",
-]
 
-CLOTHING_LABELS = [
-    "red_clothes",
-    "blue_clothes",
-    "black_clothes",
-    "white_clothes",
-    "green_clothes",
-    "yellow_clothes",
-    "dress",
-    "shirt",
-    "jacket",
-    "hat",
-    "glasses",
-]
+# ============================================================
+# 4. Labels gerais antigas / compatibilidade
+# ============================================================
 
-SKIN_TONE_LABELS = [
-    "light_skin",
-    "medium_skin",
-    "dark_skin",
-]
+SPECTRA_LABELS = list(dict.fromkeys(
+    SPECTRA_SCENE_LABELS
+    + SPECTRA_PERSON_LABELS
+    + SPECTRA_OBJECT_LABELS
+))
 
-COMPOSITION_LABELS = [
-    "close_up",
-    "medium_shot",
-    "wide_shot",
-    "one_person",
-    "two_people",
-    "crowded_scene",
-    "empty_scene",
-]
-
-VISUAL_STATE_LABELS = [
-    "calm_scene",
-    "action_scene",
-    "conversation_scene",
-    "movement_scene",
-]
 
 SPECTRA_LABEL_GROUPS = {
-    "person": PERSON_LABELS,
-    "common_objects": COMMON_OBJECT_LABELS,
-    "specific_objects": SPECIFIC_OBJECT_LABELS,
-    "actions": ACTION_LABELS,
-    "scenarios": SCENARIO_LABELS,
-    "composition": COMPOSITION_LABELS,
-    "visual_state": VISUAL_STATE_LABELS,
-    "hair": HAIR_LABELS,
-    "clothing": CLOTHING_LABELS,
-    "skin_tone": SKIN_TONE_LABELS,
+    "scene": SPECTRA_SCENE_LABELS,
+    "person": SPECTRA_PERSON_LABELS,
+    "object": SPECTRA_OBJECT_LABELS,
+    "all": SPECTRA_LABELS,
 }
 
 
-SPECTRA_LABELS = (
-    PERSON_LABELS
-    + COMMON_OBJECT_LABELS
-    + SPECIFIC_OBJECT_LABELS
-    + ACTION_LABELS
-    + SCENARIO_LABELS
-    + COMPOSITION_LABELS
-    + VISUAL_STATE_LABELS
-    + HAIR_LABELS
-    + CLOTHING_LABELS
-    + SKIN_TONE_LABELS
-)
-
-
-def get_label_count():
+def get_labels_for_task(task_name):
     """
-    Retorna a quantidade total de labels.
+    Retorna as labels de acordo com o submodelo.
+
+    task_name:
+        - scene
+        - person
+        - object
+        - all
     """
-    return len(SPECTRA_LABELS)
+    if task_name not in SPECTRA_LABEL_GROUPS:
+        raise ValueError(
+            "Task inválida: {}. Opções: {}".format(
+                task_name,
+                list(SPECTRA_LABEL_GROUPS.keys())
+            )
+        )
+
+    return SPECTRA_LABEL_GROUPS[task_name]
 
 
-def get_label_index(label):
-    """
-    Retorna o índice de uma label dentro de SPECTRA_LABELS.
-    """
-    if label not in SPECTRA_LABELS:
-        raise ValueError("Label não encontrada: {}".format(label))
-
-    return SPECTRA_LABELS.index(label)
-
-
-def get_labels_by_group(group_name):
-    """
-    Retorna as labels de um grupo específico.
-
-    Exemplo:
-        get_labels_by_group("actions")
-    """
-    if group_name not in SPECTRA_LABEL_GROUPS:
-        raise ValueError("Grupo de labels não encontrado: {}".format(group_name))
-
-    return SPECTRA_LABEL_GROUPS[group_name]
+def get_label_count(task_name="all"):
+    return len(get_labels_for_task(task_name))
 
 
 def split_predictions_by_group(predictions):
-    """
-    Separa uma lista de predições por grupo.
-
-    Entrada:
-        [
-            {"label": "person", "score": 0.91},
-            {"label": "running", "score": 0.74}
-        ]
-
-    Saída:
-        {
-            "person": [...],
-            "actions": [...]
-        }
-    """
     grouped_predictions = {
-        group_name: []
-        for group_name in SPECTRA_LABEL_GROUPS.keys()
+        "scene": [],
+        "person": [],
+        "object": [],
     }
 
     for prediction in predictions:
         label = prediction["label"]
 
-        for group_name, labels in SPECTRA_LABEL_GROUPS.items():
-            if label in labels:
-                grouped_predictions[group_name].append(prediction)
-                break
+        if label in SPECTRA_SCENE_LABELS:
+            grouped_predictions["scene"].append(prediction)
+
+        if label in SPECTRA_PERSON_LABELS:
+            grouped_predictions["person"].append(prediction)
+
+        if label in SPECTRA_OBJECT_LABELS:
+            grouped_predictions["object"].append(prediction)
 
     return grouped_predictions

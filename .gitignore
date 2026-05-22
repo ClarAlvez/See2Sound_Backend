@@ -4,5 +4,4 @@ __pycache__/
 data/dataset_sources/
 data/datasets/
 data/extracted_audio/
-data/models/
 data/test_frames/

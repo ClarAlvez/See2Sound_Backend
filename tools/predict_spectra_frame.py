@@ -15,14 +15,21 @@ def main():
 
     parser.add_argument(
         "--model-path",
-        default="data/models/spectra/spectra_vision_net_best.pt",
+        default="data/models/spectra_scene/scene_net_best.pt",
         help="Caminho do modelo treinado da Spectra."
+    )
+
+    parser.add_argument(
+        "--task-name",
+        default=None,
+        choices=["scene", "person", "object", "all"],
+        help="Força a task do modelo. Se não passar, usa a task salva no checkpoint."
     )
 
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.3,
+        default=0.5,
         help="Threshold mínimo para retornar uma label."
     )
 
@@ -45,6 +52,7 @@ def main():
         model_path=args.model_path,
         threshold=args.threshold,
         top_k=args.top_k,
+        task_name=args.task_name,
     )
 
     if args.top_only:
@@ -54,6 +62,7 @@ def main():
         )
 
         print("\nFrame analisado:", result["frame_path"])
+        print("Task:", result["task_name"])
         print("\nLabels mais prováveis:")
 
         for prediction in result["top_predictions"]:
@@ -71,6 +80,7 @@ def main():
         )
 
         print("\nFrame analisado:", result["frame_path"])
+        print("Task:", result["task_name"])
         print("Threshold:", result["threshold"])
 
         print("\nPredições:")

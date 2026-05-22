@@ -11,8 +11,10 @@ from ai.spectra.data.transforms import (
     get_validation_transforms,
     get_test_transforms,
 )
-from ai.spectra.labels.label_sets import SPECTRA_LABELS
-from ai.spectra.models.spectra_vision_net import SpectraVisionNet
+from ai.spectra.labels.label_sets import get_labels_for_task
+from ai.spectra.models.spectra_scene_net import SpectraSceneNet
+from ai.spectra.models.spectra_person_net import SpectraPersonNet
+from ai.spectra.models.spectra_object_net import SpectraObjectNet
 from ai.spectra.training.config import SpectraTrainingConfig
 from ai.spectra.training.history import TrainingHistory
 from ai.spectra.training.metrics import (
@@ -54,16 +56,19 @@ def create_dataloaders(dataset_path, config):
     train_base_dataset = SpectraImageDataset(
         csv_path=dataset_path,
         transform=get_train_transforms(config.image_size),
+        task_name=config.task_name,
     )
 
     validation_base_dataset = SpectraImageDataset(
         csv_path=dataset_path,
         transform=get_validation_transforms(config.image_size),
+        task_name=config.task_name,
     )
 
     test_base_dataset = SpectraImageDataset(
         csv_path=dataset_path,
         transform=get_test_transforms(config.image_size),
+        task_name=config.task_name,
     )
 
     dataset_size = len(train_base_dataset)
@@ -100,6 +105,35 @@ def create_dataloaders(dataset_path, config):
 
     return train_loader, validation_loader, test_loader
 
+def create_model_for_task(task_name, output_size, config):
+    """
+    Cria o modelo correto de acordo com a task.
+    """
+    if task_name == "scene":
+        return SpectraSceneNet(
+            output_size=output_size,
+            image_size=config.image_size,
+            dropout_rate=config.dropout_rate,
+            backbone_name=config.backbone_name,
+            pretrained=config.pretrained,
+            freeze_backbone=config.freeze_backbone,
+        )
+
+    if task_name == "person":
+        return SpectraPersonNet(
+            output_size=output_size,
+            image_size=config.image_size,
+            dropout_rate=config.dropout_rate,
+        )
+
+    if task_name == "object":
+        return SpectraObjectNet(
+            output_size=output_size,
+            image_size=config.image_size,
+            dropout_rate=config.dropout_rate,
+        )
+
+    raise ValueError("Task não suportada: {}".format(task_name))
 
 def create_optimizer(model, config):
     """
@@ -201,7 +235,7 @@ def run_epoch(
     return metrics
 
 
-def save_model(model, output_path, config, validation_result):
+def save_model(model, output_path, config, validation_result, label_columns):
     """
     Salva o modelo treinado.
     """
@@ -211,7 +245,8 @@ def save_model(model, output_path, config, validation_result):
     torch.save(
         {
             "model_state_dict": model.state_dict(),
-            "labels": SPECTRA_LABELS,
+            "labels": label_columns,
+            "task_name": config.task_name,
             "config": config.__dict__,
             "validation_result": validation_result,
         },
@@ -253,10 +288,12 @@ def train_spectra_model(
         config=config,
     )
 
-    model = SpectraVisionNet(
-        output_size=len(SPECTRA_LABELS),
-        image_size=config.image_size,
-        dropout_rate=config.dropout_rate,
+    label_columns = get_labels_for_task(config.task_name)
+
+    model = create_model_for_task(
+        task_name=config.task_name,
+        output_size=len(label_columns),
+        config=config,
     ).to(device)
 
     criterion = nn.BCEWithLogitsLoss()
@@ -265,7 +302,7 @@ def train_spectra_model(
     history = TrainingHistory()
 
     best_validation_f1 = -1.0
-    best_model_path = output_dir / "spectra_vision_net_best.pt"
+    best_model_path = output_dir / "{}_net_best.pt".format(config.task_name)
 
     for epoch in range(config.epochs):
         train_result = run_epoch(
@@ -318,6 +355,7 @@ def train_spectra_model(
                 output_path=best_model_path,
                 config=config,
                 validation_result=validation_result,
+                label_columns=label_columns,
             )
 
     test_result = run_epoch(
@@ -357,4 +395,23 @@ def train_spectra_model(
 
 
 if __name__ == "__main__":
-    train_spectra_model()
+    config = SpectraTrainingConfig(
+        task_name="scene",
+        epochs=20,
+        batch_size=16,
+        learning_rate=0.0003,
+        weight_decay=0.0001,
+        dropout_rate=0.3,
+        threshold=0.5,
+        optimizer_name="adamw",
+
+        backbone_name="resnet18",
+        pretrained=True,
+        freeze_backbone=False,
+    )
+
+    train_spectra_model(
+        dataset_path="data/datasets/spectra_scene_labels.csv",
+        output_dir="data/models/spectra_scene",
+        config=config,
+    )
