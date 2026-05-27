@@ -1,12 +1,15 @@
 import torch
 from torch import nn
+from torchvision import models
 
 
 class SpectraPersonNet(nn.Module):
     """
-    Modelo de pessoa da Spectra.
+    Modelo de pessoa da Spectra usando ResNet como backbone.
 
     Deve receber crops/recortes de pessoas, não o frame inteiro.
+    A ResNet funciona como extrator visual pré-treinado e a cabeça final
+    faz classificação multilabel para atributos visuais de pessoa.
 
     Detecta:
     - cabelo
@@ -21,55 +24,85 @@ class SpectraPersonNet(nn.Module):
         output_size,
         image_size=224,
         dropout_rate=0.3,
+        backbone_name="resnet18",
+        pretrained=True,
+        freeze_backbone=False,
     ):
         super().__init__()
 
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Dropout2d(dropout_rate),
+        self.output_size = output_size
+        self.image_size = image_size
+        self.dropout_rate = dropout_rate
+        self.backbone_name = backbone_name
+        self.pretrained = pretrained
+        self.freeze_backbone = freeze_backbone
 
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Dropout2d(dropout_rate),
-
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
+        self.backbone, in_features = self._create_backbone(
+            backbone_name=backbone_name,
+            pretrained=pretrained,
         )
 
-        flattened_size = self._calculate_flattened_size(image_size)
+        if freeze_backbone:
+            self._freeze_backbone()
 
         self.classifier = nn.Sequential(
-            nn.Flatten(),
-
-            nn.Linear(flattened_size, 512),
+            nn.Dropout(dropout_rate),
+            nn.Linear(in_features, 512),
             nn.ReLU(),
             nn.Dropout(dropout_rate),
-
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-
-            nn.Linear(256, output_size),
+            nn.Linear(512, output_size),
         )
 
     def forward(self, x):
-        return self.classifier(self.features(x))
+        features = self.backbone(x)
+        logits = self.classifier(features)
 
-    def _calculate_flattened_size(self, image_size):
-        with torch.no_grad():
-            fake_input = torch.zeros(1, 3, image_size, image_size)
-            fake_output = self.features(fake_input)
+        return logits
 
-        return fake_output.view(1, -1).shape[1]
+    def predict_probabilities(self, x):
+        logits = self.forward(x)
+        return torch.sigmoid(logits)
+
+    def _create_backbone(self, backbone_name, pretrained):
+        if backbone_name == "resnet18":
+            if pretrained:
+                weights = models.ResNet18_Weights.DEFAULT
+            else:
+                weights = None
+
+            model = models.resnet18(weights=weights)
+
+        elif backbone_name == "resnet34":
+            if pretrained:
+                weights = models.ResNet34_Weights.DEFAULT
+            else:
+                weights = None
+
+            model = models.resnet34(weights=weights)
+
+        elif backbone_name == "resnet50":
+            if pretrained:
+                weights = models.ResNet50_Weights.DEFAULT
+            else:
+                weights = None
+
+            model = models.resnet50(weights=weights)
+
+        else:
+            raise ValueError(
+                "Backbone não suportado: {}. Use resnet18, resnet34 ou resnet50.".format(
+                    backbone_name
+                )
+            )
+
+        in_features = model.fc.in_features
+
+        # Remove a camada final original da ImageNet.
+        # Agora a ResNet retorna apenas o vetor de características.
+        model.fc = nn.Identity()
+
+        return model, in_features
+
+    def _freeze_backbone(self):
+        for parameter in self.backbone.parameters():
+            parameter.requires_grad = False

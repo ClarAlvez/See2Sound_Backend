@@ -12,3 +12,4 @@ yt-dlp
 torchvision
 matplotlib
 scikit-learn
+fiftyone

@@ -90,12 +90,12 @@ class SpectraPredictor:
 
         if self.task_name == "scene":
             return SpectraSceneNet(
-            output_size=output_size,
-            image_size=self.image_size,
-            dropout_rate=self.dropout_rate,
-            backbone_name=self.config.get("backbone_name", "resnet18"),
-            pretrained=False,
-            freeze_backbone=self.config.get("freeze_backbone", False),
+                output_size=output_size,
+                image_size=self.image_size,
+                dropout_rate=self.dropout_rate,
+                backbone_name=self.config.get("backbone_name", "resnet18"),
+                pretrained=False,
+                freeze_backbone=self.config.get("freeze_backbone", False),
             )
 
         if self.task_name == "person":
@@ -103,6 +103,9 @@ class SpectraPredictor:
                 output_size=output_size,
                 image_size=self.image_size,
                 dropout_rate=self.dropout_rate,
+                backbone_name=self.config.get("backbone_name", "resnet18"),
+                pretrained=False,
+                freeze_backbone=self.config.get("freeze_backbone", False),
             )
 
         if self.task_name == "object":
@@ -110,6 +113,9 @@ class SpectraPredictor:
                 output_size=output_size,
                 image_size=self.image_size,
                 dropout_rate=self.dropout_rate,
+                backbone_name=self.config.get("backbone_name", "resnet18"),
+                pretrained=False,
+                freeze_backbone=self.config.get("freeze_backbone", False),
             )
 
         return SpectraVisionNet(
