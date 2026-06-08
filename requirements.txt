@@ -13,3 +13,5 @@ torchvision
 matplotlib
 scikit-learn
 fiftyone
+llama-cpp-python
+pyttsx3

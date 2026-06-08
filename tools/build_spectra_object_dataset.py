@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import fiftyone.zoo as foz
 import pandas as pd
@@ -9,10 +9,35 @@ from PIL import Image
 from ai.spectra.labels.label_sets import SPECTRA_OBJECT_LABELS
 
 
-COCO_TO_SPECTRA_OBJECT: Dict[str, str] = {
-    "person": "person" if "person" in SPECTRA_OBJECT_LABELS else None,
+"""
+Builder automático para SpectraObjectNet usando FiftyOne + COCO 2017.
 
+Objetivo:
+- Criar crops limpos de objetos.
+- Evitar mapeamentos semânticos perigosos.
+- Gerar CSV no formato esperado pelo train.py.
+- Manter apenas labels confiáveis para treino inicial da ObjectNet.
+
+Observação:
+Este builder é propositalmente mais rígido do que a versão anterior.
+É melhor gerar menos dados mais confiáveis do que muitos crops ruins.
+"""
+
+
+# ============================================================
+# Mapeamento COCO -> SpectraObjectNet
+# ============================================================
+
+# Mantém apenas mapeamentos diretos ou muito seguros.
+# Evita coisas como:
+# - fork -> knife
+# - spoon -> cup
+# - remote -> phone
+# - keyboard/mouse -> computer
+# porque isso suja o treino.
+COCO_TO_SPECTRA_OBJECT: Dict[str, Optional[str]] = {
     "book": "book",
+
     "chair": "chair",
     "couch": "sofa",
     "bed": "bed",
@@ -40,14 +65,9 @@ COCO_TO_SPECTRA_OBJECT: Dict[str, str] = {
 
     "sports ball": "ball",
 
-    "keyboard": "computer",
-    "mouse": "computer",
-    "remote": "phone",
+    "teddy bear": "toy",
 
-    "fork": "knife",
-    "spoon": "cup",
-
-    "bowl": "food",
+    # Comida: mapeamento aceito, mas pode ser desativado por flag.
     "banana": "food",
     "apple": "food",
     "sandwich": "food",
@@ -58,8 +78,6 @@ COCO_TO_SPECTRA_OBJECT: Dict[str, str] = {
     "pizza": "food",
     "donut": "food",
     "cake": "food",
-
-    "teddy bear": "toy",
 }
 
 
@@ -69,28 +87,30 @@ OBJECT_CLASS_PRIORITY: List[str] = [
     "couch",
     "bed",
     "dining table",
+
     "cell phone",
     "laptop",
     "tv",
+
     "car",
     "bicycle",
     "motorcycle",
     "bus",
+
     "dog",
     "cat",
+
     "cup",
     "bottle",
     "knife",
+
     "backpack",
     "handbag",
     "suitcase",
+
     "sports ball",
-    "keyboard",
-    "mouse",
-    "remote",
-    "fork",
-    "spoon",
-    "bowl",
+    "teddy bear",
+
     "banana",
     "apple",
     "sandwich",
@@ -101,15 +121,44 @@ OBJECT_CLASS_PRIORITY: List[str] = [
     "pizza",
     "donut",
     "cake",
-    "teddy bear",
 ]
 
 
-def normalize_mapping(mapping: Dict[str, Optional[str]]) -> Dict[str, str]:
+# Algumas labels são mais perigosas porque costumam gerar crops ruins
+# ou podem ter ambiguidade visual. Exigimos área mínima maior para elas.
+LABEL_MIN_AREA_RATIO: Dict[str, float] = {
+    "phone": 0.010,
+    "knife": 0.010,
+    "book": 0.012,
+    "cup": 0.008,
+    "bottle": 0.008,
+    "bag": 0.014,
+    "backpack": 0.014,
+    "food": 0.012,
+    "toy": 0.012,
+}
+
+
+# Limite mínimo padrão de área do crop em relação à imagem inteira.
+DEFAULT_MIN_AREA_RATIO = 0.006
+
+
+# Evita crops exagerados que provavelmente representam contexto inteiro,
+# não o objeto isolado.
+DEFAULT_MAX_AREA_RATIO = 0.75
+
+
+def normalize_mapping(
+    mapping: Dict[str, Optional[str]],
+    include_food: bool,
+) -> Dict[str, str]:
     normalized = {}
 
     for external_label, spectra_label in mapping.items():
         if spectra_label is None:
+            continue
+
+        if spectra_label == "food" and not include_food:
             continue
 
         if spectra_label not in SPECTRA_OBJECT_LABELS:
@@ -128,16 +177,12 @@ def get_supported_coco_classes(mapping: Dict[str, str]) -> List[str]:
     ]
 
 
-def crop_detection(
-    image_path: Path,
+def get_bbox_pixels(
+    image_width: int,
+    image_height: int,
     bounding_box: List[float],
-    output_path: Path,
-    padding_ratio: float = 0.04,
-    min_crop_size: int = 32,
-) -> bool:
-    image = Image.open(image_path).convert("RGB")
-    image_width, image_height = image.size
-
+    padding_ratio: float,
+) -> Optional[Tuple[int, int, int, int]]:
     x, y, width, height = bounding_box
 
     x_min = x * image_width
@@ -148,8 +193,8 @@ def crop_detection(
     box_width = x_max - x_min
     box_height = y_max - y_min
 
-    if box_width < min_crop_size or box_height < min_crop_size:
-        return False
+    if box_width <= 0 or box_height <= 0:
+        return None
 
     x_min -= box_width * padding_ratio
     x_max += box_width * padding_ratio
@@ -162,12 +207,102 @@ def crop_detection(
     y_max = min(image_height, int(y_max))
 
     if x_max <= x_min or y_max <= y_min:
+        return None
+
+    return x_min, y_min, x_max, y_max
+
+
+def is_valid_crop(
+    spectra_label: str,
+    image_width: int,
+    image_height: int,
+    bbox_pixels: Tuple[int, int, int, int],
+    min_crop_size: int,
+    min_area_ratio: float,
+    max_area_ratio: float,
+    min_aspect_ratio: float,
+    max_aspect_ratio: float,
+) -> bool:
+    x_min, y_min, x_max, y_max = bbox_pixels
+
+    crop_width = x_max - x_min
+    crop_height = y_max - y_min
+
+    if crop_width < min_crop_size or crop_height < min_crop_size:
         return False
 
-    crop = image.crop((x_min, y_min, x_max, y_max))
+    image_area = image_width * image_height
+    crop_area = crop_width * crop_height
+
+    if image_area <= 0:
+        return False
+
+    area_ratio = crop_area / image_area
+
+    label_min_area = LABEL_MIN_AREA_RATIO.get(
+        spectra_label,
+        min_area_ratio,
+    )
+
+    if area_ratio < label_min_area:
+        return False
+
+    if area_ratio > max_area_ratio:
+        return False
+
+    aspect_ratio = crop_width / max(crop_height, 1)
+
+    if aspect_ratio < min_aspect_ratio:
+        return False
+
+    if aspect_ratio > max_aspect_ratio:
+        return False
+
+    return True
+
+
+def crop_detection(
+    image_path: Path,
+    bounding_box: List[float],
+    output_path: Path,
+    spectra_label: str,
+    padding_ratio: float,
+    min_crop_size: int,
+    min_area_ratio: float,
+    max_area_ratio: float,
+    min_aspect_ratio: float,
+    max_aspect_ratio: float,
+) -> bool:
+    image = Image.open(image_path).convert("RGB")
+    image_width, image_height = image.size
+
+    bbox_pixels = get_bbox_pixels(
+        image_width=image_width,
+        image_height=image_height,
+        bounding_box=bounding_box,
+        padding_ratio=padding_ratio,
+    )
+
+    if bbox_pixels is None:
+        return False
+
+    if not is_valid_crop(
+        spectra_label=spectra_label,
+        image_width=image_width,
+        image_height=image_height,
+        bbox_pixels=bbox_pixels,
+        min_crop_size=min_crop_size,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+        min_aspect_ratio=min_aspect_ratio,
+        max_aspect_ratio=max_aspect_ratio,
+    ):
+        return False
+
+    crop = image.crop(bbox_pixels)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    crop.save(output_path)
+    crop.save(output_path, quality=95)
 
     return True
 
@@ -179,6 +314,7 @@ def build_object_row(
     source_sample_path: str,
     source_label: str,
     source_sample_id: str,
+    detection_index: int,
 ) -> Dict[str, object]:
     row = {
         "frame_path": str(crop_path),
@@ -186,6 +322,7 @@ def build_object_row(
         "source_sample_path": source_sample_path,
         "source_label": source_label,
         "source_sample_id": source_sample_id,
+        "source_detection_index": detection_index,
     }
 
     for label in SPECTRA_OBJECT_LABELS:
@@ -226,15 +363,24 @@ def build_spectra_object_dataset_from_fiftyone(
     output_csv: str,
     split: str = "train",
     max_samples: int = 5000,
-    max_per_label: int = 500,
-    min_crop_size: int = 40,
-    padding_ratio: float = 0.04,
-    dataset_name: str = "spectra_object_coco_subset",
+    max_per_label: int = 300,
+    min_crop_size: int = 64,
+    padding_ratio: float = 0.02,
+    min_area_ratio: float = DEFAULT_MIN_AREA_RATIO,
+    max_area_ratio: float = DEFAULT_MAX_AREA_RATIO,
+    min_aspect_ratio: float = 0.20,
+    max_aspect_ratio: float = 5.00,
+    include_food: bool = False,
+    dataset_name: str = "spectra_object_coco_strict_subset",
 ) -> Path:
     output_dir = Path(output_dir)
     output_csv = Path(output_csv)
 
-    coco_to_spectra = normalize_mapping(COCO_TO_SPECTRA_OBJECT)
+    coco_to_spectra = normalize_mapping(
+        mapping=COCO_TO_SPECTRA_OBJECT,
+        include_food=include_food,
+    )
+
     coco_classes = get_supported_coco_classes(coco_to_spectra)
 
     if not coco_classes:
@@ -299,8 +445,13 @@ def build_spectra_object_dataset_from_fiftyone(
                 image_path=source_image_path,
                 bounding_box=detection.bounding_box,
                 output_path=crop_path,
+                spectra_label=spectra_label,
                 padding_ratio=padding_ratio,
                 min_crop_size=min_crop_size,
+                min_area_ratio=min_area_ratio,
+                max_area_ratio=max_area_ratio,
+                min_aspect_ratio=min_aspect_ratio,
+                max_aspect_ratio=max_aspect_ratio,
             )
 
             if not success:
@@ -314,6 +465,7 @@ def build_spectra_object_dataset_from_fiftyone(
                     source_sample_path=str(source_image_path),
                     source_label=coco_label,
                     source_sample_id=str(sample.id),
+                    detection_index=detection_index,
                 )
             )
 
@@ -327,6 +479,7 @@ def build_spectra_object_dataset_from_fiftyone(
     print("\nDataset de objetos criado.")
     print("CSV:", output_csv)
     print("Total de crops:", len(rows))
+    print("Média esperada de labels positivas por crop: 1.0")
     print("\nDistribuição por label:")
 
     for label, count in sorted(
@@ -351,7 +504,7 @@ def build_spectra_object_dataset_from_fiftyone(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Cria dataset automático para SpectraObjectNet usando FiftyOne + COCO 2017."
+        description="Cria dataset rígido para SpectraObjectNet usando FiftyOne + COCO 2017."
     )
 
     parser.add_argument(
@@ -371,22 +524,56 @@ def main():
     parser.add_argument(
         "--max-per-label",
         type=int,
-        default=500,
+        default=300,
         help="Quantidade máxima de crops por label da Spectra.",
     )
 
     parser.add_argument(
         "--min-crop-size",
         type=int,
-        default=40,
+        default=64,
         help="Tamanho mínimo em pixels para largura e altura do crop.",
     )
 
     parser.add_argument(
         "--padding-ratio",
         type=float,
-        default=0.04,
+        default=0.02,
         help="Margem extra aplicada ao redor da bounding box.",
+    )
+
+    parser.add_argument(
+        "--min-area-ratio",
+        type=float,
+        default=DEFAULT_MIN_AREA_RATIO,
+        help="Área mínima do crop em relação à imagem inteira.",
+    )
+
+    parser.add_argument(
+        "--max-area-ratio",
+        type=float,
+        default=DEFAULT_MAX_AREA_RATIO,
+        help="Área máxima do crop em relação à imagem inteira.",
+    )
+
+    parser.add_argument(
+        "--min-aspect-ratio",
+        type=float,
+        default=0.20,
+        help="Aspect ratio mínimo permitido para o crop.",
+    )
+
+    parser.add_argument(
+        "--max-aspect-ratio",
+        type=float,
+        default=5.00,
+        help="Aspect ratio máximo permitido para o crop.",
+    )
+
+    parser.add_argument(
+        "--include-food",
+        action="store_true",
+        help="Inclui classes de comida do COCO mapeadas para food.",
     )
 
     parser.add_argument(
@@ -397,13 +584,13 @@ def main():
 
     parser.add_argument(
         "--output-csv",
-        default="data/datasets/spectra_object_coco_fiftyone_labels.csv",
+        default="data/datasets/spectra_object_labels.csv",
         help="CSV de saída no formato esperado pela Spectra.",
     )
 
     parser.add_argument(
         "--dataset-name",
-        default="spectra_object_coco_subset",
+        default="spectra_object_coco_strict_subset",
         help="Nome interno do dataset no FiftyOne.",
     )
 
@@ -417,21 +604,14 @@ def main():
         max_per_label=args.max_per_label,
         min_crop_size=args.min_crop_size,
         padding_ratio=args.padding_ratio,
+        min_area_ratio=args.min_area_ratio,
+        max_area_ratio=args.max_area_ratio,
+        min_aspect_ratio=args.min_aspect_ratio,
+        max_aspect_ratio=args.max_aspect_ratio,
+        include_food=args.include_food,
         dataset_name=args.dataset_name,
     )
 
 
 if __name__ == "__main__":
     main()
-
-
-
-# python3 -m tools.build_spectra_object_dataset_fiftyone \
-#   --split train \
-#   --max-samples 8000 \
-#   --max-per-label 600 \
-#   --min-crop-size 40 \
-#   --padding-ratio 0.04 \
-#   --output-dir data/dataset_sources/spectra_object_fiftyone \
-#   --output-csv data/datasets/spectra_object_labels.csv \
-#   --dataset-name spectra_object_coco_train

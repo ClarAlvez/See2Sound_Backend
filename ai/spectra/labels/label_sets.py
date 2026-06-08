@@ -135,9 +135,9 @@ PERSON_ACCESSORY_LABELS = [
 ]
 
 PERSON_SKIN_TONE_LABELS = [
-    "light_skin",
-    "medium_skin",
-    "dark_skin",
+    "light_skin_tone",
+    "medium_skin_tone",
+    "dark_skin_tone",
 ]
 
 SPECTRA_PERSON_LABELS = (

@@ -5,3 +5,4 @@ data/dataset_sources/
 data/datasets/
 data/extracted_audio/
 data/test_frames/
+data/models/llama
