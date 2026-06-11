@@ -1,13 +1,15 @@
-from ai.spectra.predictor import SpectraPredictor
+from ai.spectra.inference.predictor import SpectraPredictor
 
 predictor = SpectraPredictor(
-    model_path="data/models/spectra_net.pt",
-    threshold=0.1
+    model_path="data/models/spectra_scene/scene_net_best.pt",
+    threshold=0.1,
+    top_k=10,
+    task_name="scene",
 )
 
 result = predictor.predict_frame(
-    "data/test_frames/video_teste_cachorro.jpg",
-    top_k=10
+    image_path="data/output/frames/video_teste_frame_000300.jpg",
+    group_by_category=True,
 )
 
 for prediction in result["predictions"]:

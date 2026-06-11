@@ -6,3 +6,5 @@ data/datasets/
 data/extracted_audio/
 data/test_frames/
 data/models/llama
+data/external/market1501
+data/output/

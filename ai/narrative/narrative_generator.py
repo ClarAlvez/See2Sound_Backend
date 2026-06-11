@@ -37,7 +37,7 @@ class LLMNarrativeGenerator:
 
     def __init__(
         self,
-        model_path: str = "models/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
+        model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
         similarity_threshold: float = 0.75,
         n_ctx: int = 2048,
         n_threads: Optional[int] = None,
