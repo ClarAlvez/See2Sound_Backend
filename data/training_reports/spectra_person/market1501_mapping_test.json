@@ -1,0 +1,44 @@
+{
+    "split": "test",
+    "attribute_split": "test",
+    "image_dir": "data\\external\\market1501\\Market-1501-v15.09.15\\bounding_box_test",
+    "output_csv": "data\\datasets\\spectra_person_test_labels.csv",
+    "total_rows": 13115,
+    "invalid_images": 3819,
+    "missing_attribute_ids_count": 1,
+    "missing_attribute_ids_sample": [
+        "0000"
+    ],
+    "label_counts": {
+        "person": 13115,
+        "man": 7334,
+        "woman": 5781,
+        "short_hair": 8383,
+        "long_hair": 4732,
+        "black_clothes": 6017,
+        "white_clothes": 3775,
+        "red_clothes": 1354,
+        "blue_clothes": 3471,
+        "green_clothes": 1263,
+        "yellow_clothes": 1195,
+        "hat": 376,
+        "backpack": 3291,
+        "bag": 4426
+    },
+    "spectra_person_labels": [
+        "person",
+        "man",
+        "woman",
+        "short_hair",
+        "long_hair",
+        "black_clothes",
+        "white_clothes",
+        "red_clothes",
+        "blue_clothes",
+        "green_clothes",
+        "yellow_clothes",
+        "hat",
+        "backpack",
+        "bag"
+    ]
+}

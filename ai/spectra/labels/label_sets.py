@@ -140,13 +140,22 @@ PERSON_SKIN_TONE_LABELS = [
     "dark_skin_tone",
 ]
 
-SPECTRA_PERSON_LABELS = (
-    PERSON_BODY_LABELS
-    + PERSON_HAIR_LABELS
-    + PERSON_CLOTHING_LABELS
-    + PERSON_ACCESSORY_LABELS
-    + PERSON_SKIN_TONE_LABELS
-)
+SPECTRA_PERSON_LABELS = [
+    "person",
+    "man",
+    "woman",
+    "short_hair",
+    "long_hair",
+    "black_clothes",
+    "white_clothes",
+    "red_clothes",
+    "blue_clothes",
+    "green_clothes",
+    "yellow_clothes",
+    "hat",
+    "backpack",
+    "bag",
+]
 
 
 # ============================================================
