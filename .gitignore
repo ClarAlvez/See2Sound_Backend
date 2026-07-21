@@ -1,10 +1,65 @@
+# =========================
+# Ambientes Python
+# =========================
 .venv/
+venv/
+env/
 __pycache__/
 *.pyc
+
+# =========================
+# Datasets externos
+# =========================
+data/external/
+data/raw_videos/
 data/dataset_sources/
-data/datasets/
-data/extracted_audio/
-data/test_frames/
-data/models/llama
-data/external/market1501
+submission_templates/
+
+# =========================
+# Arquivos gerados pelo pipeline
+# =========================
 data/output/
+data/outputs/
+data/temp/
+data/tmp/
+
+# =========================
+# Áudios, frames e descrições geradas
+# =========================
+data/audio/
+data/frames/
+data/audio_descriptions/
+
+# =========================
+# Modelos grandes / checkpoints
+# =========================
+data/models/**/*.pt
+data/models/**/*.pth
+data/models/**/*.ckpt
+data/models/**/*.onnx
+data/models/**/*.gguf
+data/models/**/*.bin
+data/models/**/*.safetensors
+
+# =========================
+# Relatórios e datasets gerados
+# =========================
+data/datasets/*.csv
+data/training_reports/
+
+# =========================
+# Zips e arquivos grandes
+# =========================
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+
+# =========================
+# Sistema / editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

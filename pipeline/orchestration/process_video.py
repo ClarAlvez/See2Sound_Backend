@@ -621,6 +621,8 @@ def merge_spectra_predictions(
 def analyze_frame_with_spectra(
     frame_path: Path,
     predictors: Dict[str, Optional[SpectraPredictor]],
+    use_person_model_on_full_frame: bool = False,
+    use_object_model_on_full_frame: bool = False,
 ) -> Dict[str, Any]:
     scene_result = None
     person_result = None
@@ -632,16 +634,19 @@ def analyze_frame_with_spectra(
             group_by_category=True,
         )
 
-    # Versão inicial:
-    # PersonNet e ObjectNet recebem o frame inteiro como fallback.
-    # Quando você implementar cropper de pessoa/objeto, troque aqui para crops.
-    if predictors.get("person") is not None:
+    # Versão temporária:
+    # A PersonNet foi treinada com crops de pessoas.
+    # Portanto, por padrão, NÃO rodamos PersonNet no frame inteiro.
+    # Para testes, ative use_person_model_on_full_frame=True.
+    if predictors.get("person") is not None and use_person_model_on_full_frame:
         person_result = predictors["person"].predict_frame(
             image_path=str(frame_path),
             group_by_category=True,
         )
 
-    if predictors.get("object") is not None:
+    # Mesma lógica para ObjectNet.
+    # Quando houver cropper de objetos, este bloco deve usar crops.
+    if predictors.get("object") is not None and use_object_model_on_full_frame:
         object_result = predictors["object"].predict_frame(
             image_path=str(frame_path),
             group_by_category=True,
@@ -671,6 +676,8 @@ def build_spectra_outputs_for_scenes(
     scene_intervals: List[Dict[str, float]],
     whisper_result: Dict[str, Any],
     predictors: Dict[str, Optional[SpectraPredictor]],
+    use_person_model_on_full_frame: bool = False,
+    use_object_model_on_full_frame: bool = False,
 ) -> List[Dict[str, Any]]:
     pauses = extract_speech_pauses(whisper_result)
 
@@ -689,6 +696,8 @@ def build_spectra_outputs_for_scenes(
         spectra_frame_result = analyze_frame_with_spectra(
             frame_path=frame_record["frame_path"],
             predictors=predictors,
+            use_person_model_on_full_frame=use_person_model_on_full_frame,
+            use_object_model_on_full_frame=use_object_model_on_full_frame,
         )
 
         best_pause = find_best_pause_for_interval(
@@ -858,14 +867,18 @@ def process_video(
     refine_with_detected_language: bool = True,
 
     # Spectra
-    scene_model_path: str = "data/models/spectra_scene/scene_net_best.pt",
-    person_model_path: Optional[str] = "data/models/spectra_person/person_net_best.pt",
-    object_model_path: Optional[str] = "data/models/spectra_object/object_net_best.pt",
+    scene_model_path: Optional[str] = "data/models/spectra_scene/scene_net_best.pt",
+    person_model_path: Optional[str] = None,
+    object_model_path: Optional[str] = None,
     spectra_scene_threshold: float = 0.45,
     spectra_person_threshold: float = 0.50,
     spectra_object_threshold: float = 0.50,
     spectra_top_k: int = 12,
     strict_model_loading: bool = False,
+
+    # Uso temporário enquanto ainda não há cropper de pessoa/objeto
+    use_person_model_on_full_frame: bool = False,
+    use_object_model_on_full_frame: bool = False,
 
     # Narrative
     narrative_model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
@@ -976,6 +989,8 @@ def process_video(
                 scene_intervals=scene_intervals,
                 whisper_result=whisper_result,
                 predictors=predictors,
+                use_person_model_on_full_frame=use_person_model_on_full_frame,
+                use_object_model_on_full_frame=use_object_model_on_full_frame,
             )
 
     narrative_timeline: List[Dict[str, Any]] = []
