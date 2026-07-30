@@ -11,8 +11,8 @@ from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
 
 
 def main():
-    model_path = "data/models/spectra_person_v2_1_balanced_30k/person_net_best.pt"
-    csv_path = "data/datasets/spectra_person_market_upar_balanced_30k_labels.csv"
+    model_path = "data/models/spectra_person_v3_hair/person_net_best.pt"
+    csv_path = "data/datasets/spectra_person_v3_hair_labels.csv"
 
     predictor = SpectraPredictor(
         model_path=model_path,
@@ -21,7 +21,10 @@ def main():
         task_name="person",
     )
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(
+        csv_path,
+        low_memory=False,
+    )
 
     # Amostra para não demorar demais
     df = df.sample(
@@ -80,7 +83,9 @@ def main():
 
     report = report.sort_values("f1", ascending=True)
 
-    output_path = Path("data/training_reports/spectra_person/person_v2_15k_per_label_report.csv")
+    output_path = Path(
+        "data/training_reports/spectra_person/person_v3_hair_per_label_report.csv"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     report.to_csv(output_path, index=False)
 

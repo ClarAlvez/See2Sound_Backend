@@ -103,6 +103,16 @@ PERSON_HAIR_LABELS = [
     "short_hair",
     "long_hair",
     "bald_hair",
+
+    "black_hair",
+    "blonde_hair",
+    "brown_hair",
+    "gray_hair",
+
+    "straight_hair",
+    "wavy_hair",
+    "bangs_hair",
+    "receding_hairline",
 ]
 
 PERSON_CLOTHING_COLOR_LABELS = [

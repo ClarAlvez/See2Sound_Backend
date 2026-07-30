@@ -10,6 +10,7 @@ from pipeline.video.frames import extract_frames
 from pipeline.video.scenes import detect_scene_changes
 
 from ai.spectra.inference.predictor import SpectraPredictor
+from ai.spectra.inference.person_cropper import PersonCropper
 
 
 # ============================================================
@@ -74,6 +75,7 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
     frames_dir = output_base_dir / "frames"
     scene_dir = output_base_dir / "scene_data"
     spectra_dir = output_base_dir / "spectra"
+    person_crops_dir = output_base_dir / "person_crops"
     narrative_dir = output_base_dir / "narrative"
     audio_description_dir = output_base_dir / "audio_descriptions"
 
@@ -82,6 +84,7 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
         frames_dir,
         scene_dir,
         spectra_dir,
+        person_crops_dir,
         narrative_dir,
         audio_description_dir,
     ]:
@@ -92,6 +95,7 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
         "frames_dir": frames_dir,
         "scene_dir": scene_dir,
         "spectra_dir": spectra_dir,
+        "person_crops_dir": person_crops_dir,
         "narrative_dir": narrative_dir,
         "audio_description_dir": audio_description_dir,
     }
@@ -617,12 +621,55 @@ def merge_spectra_predictions(
 
     return labels, confidence, context
 
+def merge_person_crop_results(
+    crop_results: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    merged_scores: Dict[str, float] = {}
+
+    raw_crop_results = []
+
+    for item in crop_results:
+        crop = item["crop"]
+        result = item["result"]
+
+        raw_crop_results.append(item)
+
+        predictions = extract_predictions_from_result(result)
+
+        for prediction in predictions:
+            label = prediction["label"]
+            score = prediction["score"]
+
+            if label not in merged_scores:
+                merged_scores[label] = score
+            else:
+                merged_scores[label] = max(merged_scores[label], score)
+
+    predictions = [
+        {
+            "label": label,
+            "score": score,
+        }
+        for label, score in sorted(
+            merged_scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ]
+
+    return {
+        "labels": [prediction["label"] for prediction in predictions],
+        "predictions": predictions,
+        "raw_crop_results": raw_crop_results,
+    }
 
 def analyze_frame_with_spectra(
     frame_path: Path,
     predictors: Dict[str, Optional[SpectraPredictor]],
     use_person_model_on_full_frame: bool = False,
     use_object_model_on_full_frame: bool = False,
+    person_cropper: Optional[PersonCropper] = None,
+    person_crops_output_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     scene_result = None
     person_result = None
@@ -634,15 +681,39 @@ def analyze_frame_with_spectra(
             group_by_category=True,
         )
 
-    # Versão temporária:
-    # A PersonNet foi treinada com crops de pessoas.
-    # Portanto, por padrão, NÃO rodamos PersonNet no frame inteiro.
-    # Para testes, ative use_person_model_on_full_frame=True.
-    if predictors.get("person") is not None and use_person_model_on_full_frame:
-        person_result = predictors["person"].predict_frame(
-            image_path=str(frame_path),
-            group_by_category=True,
-        )
+    person_crops = []
+
+    if predictors.get("person") is not None:
+        if person_cropper is not None and person_crops_output_dir is not None:
+            person_crops = person_cropper.crop_people(
+                image_path=str(frame_path),
+                output_dir=str(person_crops_output_dir),
+                max_people=3,
+            )
+
+            crop_results = []
+
+            for crop in person_crops:
+                crop_result = predictors["person"].predict_frame(
+                    image_path=crop["crop_path"],
+                    group_by_category=True,
+                )
+
+                crop_results.append(
+                    {
+                        "crop": crop,
+                        "result": crop_result,
+                    }
+                )
+
+            if crop_results:
+                person_result = merge_person_crop_results(crop_results)
+
+        elif use_person_model_on_full_frame:
+            person_result = predictors["person"].predict_frame(
+                image_path=str(frame_path),
+                group_by_category=True,
+            )
 
     # Mesma lógica para ObjectNet.
     # Quando houver cropper de objetos, este bloco deve usar crops.
@@ -667,6 +738,7 @@ def analyze_frame_with_spectra(
             "scene": scene_result,
             "person": person_result,
             "object": object_result,
+            "person_crops": person_crops,
         },
     }
 
@@ -678,6 +750,8 @@ def build_spectra_outputs_for_scenes(
     predictors: Dict[str, Optional[SpectraPredictor]],
     use_person_model_on_full_frame: bool = False,
     use_object_model_on_full_frame: bool = False,
+    person_cropper: Optional[PersonCropper] = None,
+    person_crops_output_dir: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     pauses = extract_speech_pauses(whisper_result)
 
@@ -698,6 +772,8 @@ def build_spectra_outputs_for_scenes(
             predictors=predictors,
             use_person_model_on_full_frame=use_person_model_on_full_frame,
             use_object_model_on_full_frame=use_object_model_on_full_frame,
+            person_cropper=person_cropper,
+            person_crops_output_dir=person_crops_output_dir,
         )
 
         best_pause = find_best_pause_for_interval(
@@ -876,9 +952,11 @@ def process_video(
     spectra_top_k: int = 12,
     strict_model_loading: bool = False,
 
-    # Uso temporário enquanto ainda não há cropper de pessoa/objeto
     use_person_model_on_full_frame: bool = False,
     use_object_model_on_full_frame: bool = False,
+    use_person_cropper: bool = True,
+    person_cropper_model_name: str = "yolov8n.pt",
+    person_cropper_confidence_threshold: float = 0.35,
 
     # Narrative
     narrative_model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
@@ -968,6 +1046,14 @@ def process_video(
 
     spectra_outputs: List[Dict[str, Any]] = []
 
+    person_cropper = None
+
+    if run_spectra and use_person_cropper:
+        person_cropper = PersonCropper(
+            model_name=person_cropper_model_name,
+            confidence_threshold=person_cropper_confidence_threshold,
+        )
+
     if run_spectra:
         predictors = create_spectra_predictors(
             scene_model_path=scene_model_path,
@@ -991,6 +1077,8 @@ def process_video(
                 predictors=predictors,
                 use_person_model_on_full_frame=use_person_model_on_full_frame,
                 use_object_model_on_full_frame=use_object_model_on_full_frame,
+                person_cropper=person_cropper,
+                person_crops_output_dir=output_dirs["person_crops_dir"],
             )
 
     narrative_timeline: List[Dict[str, Any]] = []
