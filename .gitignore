@@ -14,6 +14,12 @@ data/external/
 data/raw_videos/
 data/dataset_sources/
 submission_templates/
+data/datasets/manual_review/
+data/datasets/*.csv
+data/training_reports/
+data/output/
+data/external/
+data/models/
 
 # =========================
 # Arquivos gerados pelo pipeline
