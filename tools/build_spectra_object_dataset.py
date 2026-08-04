@@ -6,7 +6,7 @@ import fiftyone.zoo as foz
 import pandas as pd
 from PIL import Image
 
-from ai.spectra.labels.label_sets import SPECTRA_OBJECT_LABELS
+from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
 
 
 """

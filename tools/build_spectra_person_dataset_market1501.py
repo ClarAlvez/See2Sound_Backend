@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import pandas as pd
 from scipy.io import loadmat
 
-from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
 
 
 def extract_person_id_from_filename(image_path: Path) -> Optional[str]:

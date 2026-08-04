@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
-from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
 
 
 PERSON_ATTRIBUTE_PROMPTS: Dict[str, str] = {

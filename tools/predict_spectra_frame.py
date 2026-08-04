@@ -1,6 +1,6 @@
 import argparse
 
-from ai.spectra.inference.predictor import SpectraPredictor
+from ai.spectra.predictor import SpectraPredictor
 
 
 def main():

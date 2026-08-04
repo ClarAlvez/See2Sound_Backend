@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
 
 
 def main():

@@ -1,4 +1,4 @@
-from ai.spectra.inference.predictor import SpectraPredictor
+from ai.spectra.predictor import SpectraPredictor
 
 predictor = SpectraPredictor(
     model_path="data/models/spectra_scene/scene_net_best.pt",

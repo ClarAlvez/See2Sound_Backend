@@ -9,8 +9,8 @@ from pipeline.audio.whisperer import WhisperPauseDetector
 from pipeline.video.frames import extract_frames
 from pipeline.video.scenes import detect_scene_changes
 
-from ai.spectra.inference.predictor import SpectraPredictor
-from ai.spectra.inference.person_cropper import PersonCropper
+from ai.spectra.predictor import SpectraPredictor
+from ai.spectra.Person.person_cropper import PersonCropper
 
 
 # ============================================================

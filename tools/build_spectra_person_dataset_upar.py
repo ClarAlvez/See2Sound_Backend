@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
 
 
 def normalize_name(value: str) -> str:

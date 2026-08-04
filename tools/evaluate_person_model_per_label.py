@@ -6,8 +6,8 @@ from PIL import Image
 from sklearn.metrics import precision_recall_fscore_support
 from torchvision import transforms
 
-from ai.spectra.inference.predictor import SpectraPredictor
-from ai.spectra.labels.label_sets import SPECTRA_PERSON_LABELS
+from ai.spectra.predictor import SpectraPredictor
+from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
 
 
 def main():

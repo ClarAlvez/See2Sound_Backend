@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
-from ai.spectra.labels.label_sets import SPECTRA_SCENE_LABELS
+from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
 
 
 PIXABAY_VIDEO_API_URL = "https://pixabay.com/api/videos/"
