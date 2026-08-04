@@ -5,13 +5,20 @@ result = process_video(
     output_base_dir="data/output",
 
     scene_model_path="data/models/spectra_scene/scene_net_best.pt",
-    person_model_path=None,
+    person_model_path="data/models/spectra_person_v4_real_crops/person_net_best.pt",
     object_model_path=None,
 
-    tts_rate=170,
-    tts_volume=1.0,
+    spectra_scene_threshold=0.45,
+    spectra_person_threshold=0.45,
+    spectra_top_k=20,
+
+    use_person_cropper=True,
+    use_person_model_on_full_frame=False,
 
     run_spectra=True,
-    run_narrative=True,
-    run_tts=True,
+    run_narrative=False,
+    run_tts=False,
 )
+
+print("Pipeline finalizado.")
+print(result["artifacts"])

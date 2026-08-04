@@ -1,0 +1,42 @@
+{
+    "split": "train",
+    "attribute_split": "train",
+    "image_dir": "data\\external\\market1501\\Market-1501-v15.09.15\\bounding_box_train",
+    "output_csv": "data\\datasets\\spectra_person_labels_debug.csv",
+    "total_rows": 300,
+    "invalid_images": 0,
+    "missing_attribute_ids_count": 0,
+    "missing_attribute_ids_sample": [],
+    "label_counts": {
+        "person": 300,
+        "man": 206,
+        "woman": 94,
+        "short_hair": 230,
+        "long_hair": 70,
+        "black_clothes": 120,
+        "white_clothes": 132,
+        "red_clothes": 101,
+        "blue_clothes": 126,
+        "green_clothes": 0,
+        "yellow_clothes": 5,
+        "hat": 20,
+        "backpack": 79,
+        "bag": 30
+    },
+    "spectra_person_labels": [
+        "person",
+        "man",
+        "woman",
+        "short_hair",
+        "long_hair",
+        "black_clothes",
+        "white_clothes",
+        "red_clothes",
+        "blue_clothes",
+        "green_clothes",
+        "yellow_clothes",
+        "hat",
+        "backpack",
+        "bag"
+    ]
+}
