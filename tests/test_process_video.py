@@ -5,7 +5,7 @@ result = process_video(
     output_base_dir="data/output",
 
     scene_model_path="data/models/spectra_scene/scene_net_best.pt",
-    person_model_path="data/models/spectra_person_v4_real_crops/person_net_best.pt",
+    person_model_path="data/models/spectra_person/person_net_best.pt",
     object_model_path=None,
 
     spectra_scene_threshold=0.45,
