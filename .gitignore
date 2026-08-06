@@ -35,7 +35,6 @@ data/audio_descriptions/
 # =========================
 # Modelos grandes / checkpoints
 # =========================
-data/models/**/*.pt
 data/models/**/*.pth
 data/models/**/*.ckpt
 data/models/**/*.onnx
