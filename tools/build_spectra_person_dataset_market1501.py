@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import pandas as pd
 from scipy.io import loadmat
 
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 
 
 def extract_person_id_from_filename(image_path: Path) -> Optional[str]:
@@ -80,7 +80,7 @@ def is_positive(value) -> bool:
 
 
 def build_labels_from_market_row(row: pd.Series) -> Dict[str, int]:
-    labels = {label: 0 for label in SPECTRA_PERSON_LABELS}
+    labels = {label: 0 for label in LABELS}
 
     if "person" in labels:
         labels["person"] = 1
@@ -214,7 +214,7 @@ def build_dataset(
             "source_person_id": person_id,
         }
 
-        for label in SPECTRA_PERSON_LABELS:
+        for label in LABELS:
             output_row[label] = int(labels.get(label, 0))
 
         rows.append(output_row)
@@ -255,7 +255,7 @@ def build_dataset(
         "missing_attribute_ids_count": int(len(missing_attribute_ids)),
         "missing_attribute_ids_sample": sorted(list(missing_attribute_ids))[:50],
         "label_counts": label_counts,
-        "spectra_person_labels": SPECTRA_PERSON_LABELS,
+        "spectra_person_labels": LABELS,
     }
 
     with open(output_report, "w", encoding="utf-8") as file:

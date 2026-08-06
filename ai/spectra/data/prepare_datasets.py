@@ -4,13 +4,13 @@ from pathlib import Path
 import pandas as pd
 
 from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
 
 
 LABELS_BY_TASK = {
     "scene": SPECTRA_SCENE_LABELS,
-    "person": SPECTRA_PERSON_LABELS,
+    "person": LABELS,
     "object": SPECTRA_OBJECT_LABELS,
 }
 

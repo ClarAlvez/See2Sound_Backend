@@ -6,11 +6,11 @@ from ai.spectra.predictor import SpectraPredictor
 
 def split_predictions_by_group(predictions):
     from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
-    from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+    from ai.spectra.Person.labels import LABELS
     from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
 
     groups = {"scene": [], "person": [], "object": []}
-    label_sets = {"scene": SPECTRA_SCENE_LABELS, "person": SPECTRA_PERSON_LABELS, "object": SPECTRA_OBJECT_LABELS}
+    label_sets = {"scene": SPECTRA_SCENE_LABELS, "person": LABELS, "object": SPECTRA_OBJECT_LABELS}
     for prediction in predictions:
         for name, labels in label_sets.items():
             if prediction["label"] in labels:

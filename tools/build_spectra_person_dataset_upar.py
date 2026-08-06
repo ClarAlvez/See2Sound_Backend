@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 
 
 def normalize_name(value: str) -> str:
@@ -290,7 +290,7 @@ def apply_consistency_rules(labels: Dict[str, int]) -> None:
 def build_labels_from_upar_row(row: pd.Series) -> Dict[str, int]:
     labels = {
         label: 0
-        for label in SPECTRA_PERSON_LABELS
+        for label in LABELS
     }
 
     if "person" in labels:
@@ -389,7 +389,7 @@ def build_upar_dataset(
             "source_image_reference": image_reference,
         }
 
-        for label in SPECTRA_PERSON_LABELS:
+        for label in LABELS:
             output_row[label] = int(labels.get(label, 0))
 
         rows.append(output_row)
@@ -406,7 +406,7 @@ def build_upar_dataset(
     if len(output_df) > 0:
         label_counts = {
             label: int(output_df[label].sum())
-            for label in SPECTRA_PERSON_LABELS
+            for label in LABELS
             if label in output_df.columns
         }
 
@@ -417,7 +417,7 @@ def build_upar_dataset(
         "total_output_rows": int(len(output_df)),
         "missing_images": int(missing_images),
         "missing_image_samples": missing_samples,
-        "spectra_person_labels": SPECTRA_PERSON_LABELS,
+        "spectra_person_labels": LABELS,
         "available_columns": list(df.columns),
         "label_counts": label_counts,
     }
@@ -433,7 +433,7 @@ def build_upar_dataset(
     print("Imagens ausentes:", missing_images)
 
     if len(output_df) > 0:
-        counts = output_df[SPECTRA_PERSON_LABELS].sum().sort_values(ascending=False)
+        counts = output_df[LABELS].sum().sort_values(ascending=False)
 
         print("\nDistribuição por label:")
         print(counts)
@@ -442,7 +442,7 @@ def build_upar_dataset(
         print(list(counts[counts == 0].index))
 
         print("\nMédia de labels positivas por imagem:")
-        print(output_df[SPECTRA_PERSON_LABELS].sum(axis=1).mean())
+        print(output_df[LABELS].sum(axis=1).mean())
 
 
 def main():

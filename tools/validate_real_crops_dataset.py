@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 
 
 def main():
@@ -42,11 +42,11 @@ def main():
     else:
         print("\nAs primeiras 200 imagens existem.")
 
-    for label in SPECTRA_PERSON_LABELS:
+    for label in LABELS:
         if label not in df.columns:
             df[label] = 0
 
-    counts = df[SPECTRA_PERSON_LABELS].sum().sort_values(ascending=False)
+    counts = df[LABELS].sum().sort_values(ascending=False)
 
     print("\nDistribuição por label:")
     print(counts)
@@ -55,7 +55,7 @@ def main():
     print(list(counts[counts == 0].index))
 
     print("\nMédia de labels positivas por crop:")
-    print(df[SPECTRA_PERSON_LABELS].sum(axis=1).mean())
+    print(df[LABELS].sum(axis=1).mean())
 
 
 if __name__ == "__main__":

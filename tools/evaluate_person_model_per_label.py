@@ -7,7 +7,7 @@ from sklearn.metrics import precision_recall_fscore_support
 from torchvision import transforms
 
 from ai.spectra.predictor import SpectraPredictor
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
     predictor = SpectraPredictor(
         model_path=model_path,
         threshold=0.5,
-        top_k=len(SPECTRA_PERSON_LABELS),
+        top_k=len(LABELS),
         task_name="person",
     )
 
@@ -54,7 +54,7 @@ def main():
         true_row = []
         pred_row = []
 
-        for label in SPECTRA_PERSON_LABELS:
+        for label in LABELS:
             true_row.append(int(row.get(label, 0)))
             pred_row.append(1 if prediction_scores.get(label, 0.0) >= 0.5 else 0)
 
@@ -73,7 +73,7 @@ def main():
 
     report = pd.DataFrame(
         {
-            "label": SPECTRA_PERSON_LABELS,
+            "label": LABELS,
             "precision": precision,
             "recall": recall,
             "f1": f1,

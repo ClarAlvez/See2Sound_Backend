@@ -6,16 +6,16 @@ import pandas as pd
 from PIL import Image
 
 from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
-from ai.spectra.Person.labels import SPECTRA_PERSON_LABELS
+from ai.spectra.Person.labels import LABELS
 from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
 
 SPECTRA_LABEL_GROUPS = {
     "scene": SPECTRA_SCENE_LABELS,
-    "person": SPECTRA_PERSON_LABELS,
+    "person": LABELS,
     "object": SPECTRA_OBJECT_LABELS,
 }
 SPECTRA_LABELS = list(dict.fromkeys(
-    SPECTRA_SCENE_LABELS + SPECTRA_PERSON_LABELS + SPECTRA_OBJECT_LABELS
+    SPECTRA_SCENE_LABELS + LABELS + SPECTRA_OBJECT_LABELS
 ))
 
 
