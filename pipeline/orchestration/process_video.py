@@ -11,6 +11,10 @@ from pipeline.video.scenes import detect_scene_changes
 
 from ai.spectra.predictor import SpectraPredictor
 from ai.spectra.Person.person_cropper import PersonCropper
+try:
+    from ai.spectra.Actions.person_action_analyzer import PersonActionAnalyzer
+except ImportError:
+    from ai.spectra.Actions.analyzer import PersonActionAnalyzer
 
 
 # ============================================================
@@ -76,6 +80,7 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
     scene_dir = output_base_dir / "scene_data"
     spectra_dir = output_base_dir / "spectra"
     person_crops_dir = output_base_dir / "person_crops"
+    action_crops_dir = output_base_dir / "action_person_crops"
     narrative_dir = output_base_dir / "narrative"
     audio_description_dir = output_base_dir / "audio_descriptions"
 
@@ -85,6 +90,7 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
         scene_dir,
         spectra_dir,
         person_crops_dir,
+        action_crops_dir,
         narrative_dir,
         audio_description_dir,
     ]:
@@ -96,9 +102,12 @@ def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
         "scene_dir": scene_dir,
         "spectra_dir": spectra_dir,
         "person_crops_dir": person_crops_dir,
+        "action_crops_dir": action_crops_dir,
         "narrative_dir": narrative_dir,
         "audio_description_dir": audio_description_dir,
     }
+
+
 
 
 def save_json(data: Any, output_path: Path) -> Path:
@@ -501,6 +510,64 @@ def maybe_create_predictor(
         task_name=task_name,
     )
 
+def create_action_analyzer(
+    action_model_path: Optional[str],
+    action_threshold: float = 0.3,
+    action_top_k: int = 10,
+    person_cropper_model_name: str = "yolov8n.pt",
+    person_cropper_confidence_threshold: float = 0.35,
+    max_people: int = 5,
+):
+    if action_model_path is None:
+        return None
+
+    action_model = Path(action_model_path)
+
+    if not action_model.exists():
+        print(f"Modelo Actions não encontrado, pulando Actions: {action_model}")
+        return None
+
+    return PersonActionAnalyzer(
+        action_model_path=str(action_model),
+        action_threshold=action_threshold,
+        action_top_k=action_top_k,
+        person_cropper_model_name=person_cropper_model_name,
+        person_cropper_confidence_threshold=person_cropper_confidence_threshold,
+        max_people=max_people,
+    )
+    
+def analyze_frame_actions_with_person_crops(
+    frame_path: str,
+    action_analyzer,
+    action_crops_dir: Path,
+    threshold: float = 0.3,
+    top_k: int = 10,
+):
+    if action_analyzer is None:
+        return {
+            "frame_path": str(frame_path),
+            "task_name": "action",
+            "source": "disabled",
+            "predictions": [],
+            "grouped_predictions": {
+                "scene": [],
+                "person": [],
+                "object": [],
+                "action": [],
+            },
+        }
+
+    frame_path = Path(frame_path)
+
+    frame_crops_dir = action_crops_dir / frame_path.stem
+    frame_crops_dir.mkdir(parents=True, exist_ok=True)
+
+    return action_analyzer.analyze_frame(
+        image_path=str(frame_path),
+        crops_output_dir=str(frame_crops_dir),
+        threshold=threshold,
+        top_k=top_k,
+    )
 
 def create_spectra_predictors(
     scene_model_path: Optional[str],
@@ -581,11 +648,13 @@ def merge_spectra_predictions(
     scene_result: Optional[Dict[str, Any]],
     person_result: Optional[Dict[str, Any]],
     object_result: Optional[Dict[str, Any]],
+    action_result: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], Dict[str, float], Dict[str, Any]]:
     task_results = {
         "scene": extract_predictions_from_result(scene_result),
         "person": extract_predictions_from_result(person_result),
         "object": extract_predictions_from_result(object_result),
+        "action": extract_predictions_from_result(action_result),
     }
 
     label_scores: Dict[str, float] = {}
@@ -596,10 +665,8 @@ def merge_spectra_predictions(
             label = prediction["label"]
             score = prediction["score"]
 
-            # Score por tarefa.
             confidence[f"{task_name}.{label}"] = score
 
-            # Score unificado por label.
             if label not in label_scores:
                 label_scores[label] = score
             else:
@@ -620,6 +687,9 @@ def merge_spectra_predictions(
     }
 
     return labels, confidence, context
+
+
+
 
 def merge_person_crop_results(
     crop_results: List[Dict[str, Any]],
@@ -670,10 +740,15 @@ def analyze_frame_with_spectra(
     use_object_model_on_full_frame: bool = False,
     person_cropper: Optional[PersonCropper] = None,
     person_crops_output_dir: Optional[Path] = None,
+    action_analyzer: Optional[PersonActionAnalyzer] = None,
+    action_crops_output_dir: Optional[Path] = None,
+    spectra_action_threshold: float = 0.3,
+    spectra_top_k: int = 10,
 ) -> Dict[str, Any]:
     scene_result = None
     person_result = None
     object_result = None
+    action_result = None
 
     if predictors.get("scene") is not None:
         scene_result = predictors["scene"].predict_frame(
@@ -685,17 +760,22 @@ def analyze_frame_with_spectra(
 
     if predictors.get("person") is not None:
         if person_cropper is not None and person_crops_output_dir is not None:
+            person_frame_crops_dir = person_crops_output_dir / frame_path.stem
+            person_frame_crops_dir.mkdir(parents=True, exist_ok=True)
+
             person_crops = person_cropper.crop_people(
                 image_path=str(frame_path),
-                output_dir=str(person_crops_output_dir),
+                output_dir=str(person_frame_crops_dir),
                 max_people=3,
             )
 
             crop_results = []
 
             for crop in person_crops:
+                crop_path = crop.get("crop_path") if isinstance(crop, dict) else str(crop)
+
                 crop_result = predictors["person"].predict_frame(
-                    image_path=crop["crop_path"],
+                    image_path=crop_path,
                     group_by_category=True,
                 )
 
@@ -715,18 +795,26 @@ def analyze_frame_with_spectra(
                 group_by_category=True,
             )
 
-    # Mesma lógica para ObjectNet.
-    # Quando houver cropper de objetos, este bloco deve usar crops.
     if predictors.get("object") is not None and use_object_model_on_full_frame:
         object_result = predictors["object"].predict_frame(
             image_path=str(frame_path),
             group_by_category=True,
         )
 
+    if action_analyzer is not None and action_crops_output_dir is not None:
+        action_result = analyze_frame_actions_with_person_crops(
+            frame_path=str(frame_path),
+            action_analyzer=action_analyzer,
+            action_crops_dir=action_crops_output_dir,
+            threshold=spectra_action_threshold,
+            top_k=spectra_top_k,
+        )
+
     labels, confidence, context = merge_spectra_predictions(
         scene_result=scene_result,
         person_result=person_result,
         object_result=object_result,
+        action_result=action_result,
     )
 
     return {
@@ -738,9 +826,12 @@ def analyze_frame_with_spectra(
             "scene": scene_result,
             "person": person_result,
             "object": object_result,
+            "action": action_result,
             "person_crops": person_crops,
         },
     }
+
+
 
 
 def build_spectra_outputs_for_scenes(
@@ -752,6 +843,10 @@ def build_spectra_outputs_for_scenes(
     use_object_model_on_full_frame: bool = False,
     person_cropper: Optional[PersonCropper] = None,
     person_crops_output_dir: Optional[Path] = None,
+    action_analyzer: Optional[PersonActionAnalyzer] = None,
+    action_crops_output_dir: Optional[Path] = None,
+    spectra_action_threshold: float = 0.3,
+    spectra_top_k: int = 10,
 ) -> List[Dict[str, Any]]:
     pauses = extract_speech_pauses(whisper_result)
 
@@ -774,6 +869,10 @@ def build_spectra_outputs_for_scenes(
             use_object_model_on_full_frame=use_object_model_on_full_frame,
             person_cropper=person_cropper,
             person_crops_output_dir=person_crops_output_dir,
+            action_analyzer=action_analyzer,
+            action_crops_output_dir=action_crops_output_dir,
+            spectra_action_threshold=spectra_action_threshold,
+            spectra_top_k=spectra_top_k,
         )
 
         best_pause = find_best_pause_for_interval(
@@ -786,6 +885,7 @@ def build_spectra_outputs_for_scenes(
         context["frame_path"] = spectra_frame_result["frame_path"]
         context["scene_index"] = interval["scene_index"]
         context["selected_frame_timestamp"] = frame_record["timestamp"]
+        context["raw_outputs"] = spectra_frame_result.get("raw", {})
 
         if best_pause:
             context["suggested_pause"] = best_pause
@@ -801,6 +901,8 @@ def build_spectra_outputs_for_scenes(
         )
 
     return spectra_outputs
+
+
 
 
 # ============================================================
@@ -946,9 +1048,11 @@ def process_video(
     scene_model_path: Optional[str] = "data/models/spectra_scene/scene_net_best.pt",
     person_model_path: Optional[str] = None,
     object_model_path: Optional[str] = None,
+    action_model_path: Optional[str] = None,
     spectra_scene_threshold: float = 0.45,
     spectra_person_threshold: float = 0.50,
     spectra_object_threshold: float = 0.50,
+    spectra_action_threshold: float = 0.30,
     spectra_top_k: int = 12,
     strict_model_loading: bool = False,
 
@@ -958,9 +1062,13 @@ def process_video(
     person_cropper_model_name: str = "yolov8n.pt",
     person_cropper_confidence_threshold: float = 0.35,
 
+    use_action_model: bool = True,
+    use_action_person_cropper: bool = True,
+    action_max_people: int = 5,
+
     # Narrative
     narrative_model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
-        
+
     # TTS
     tts_rate: int = 170,
     tts_volume: float = 1.0,
@@ -980,15 +1088,10 @@ def process_video(
     4. Analisa fala/pausas com Whisper.
     5. Extrai frames.
     6. Detecta cenas.
-    7. Executa SpectraSceneNet, SpectraPersonNet e SpectraObjectNet.
+    7. Executa Spectra Scene, Person, Object e Actions.
     8. Unifica labels da Spectra.
     9. Envia labels para Narrative.
     10. Gera arquivos de áudio com TTS.
-
-    Observação:
-    Nesta versão inicial, PersonNet e ObjectNet recebem o frame inteiro como fallback.
-    Quando os croppers estiverem prontos, a função analyze_frame_with_spectra
-    deve ser atualizada para recortar pessoa/objeto antes de chamar os modelos.
     """
     validated_video_path = validate_video_path(video_path)
     validated_output_base_dir = ensure_output_base_directory(output_base_dir)
@@ -1047,11 +1150,22 @@ def process_video(
     spectra_outputs: List[Dict[str, Any]] = []
 
     person_cropper = None
+    action_analyzer = None
 
     if run_spectra and use_person_cropper:
         person_cropper = PersonCropper(
             model_name=person_cropper_model_name,
             confidence_threshold=person_cropper_confidence_threshold,
+        )
+
+    if run_spectra and use_action_model and use_action_person_cropper:
+        action_analyzer = create_action_analyzer(
+            action_model_path=action_model_path,
+            action_threshold=spectra_action_threshold,
+            action_top_k=spectra_top_k,
+            person_cropper_model_name=person_cropper_model_name,
+            person_cropper_confidence_threshold=person_cropper_confidence_threshold,
+            max_people=action_max_people,
         )
 
     if run_spectra:
@@ -1066,8 +1180,8 @@ def process_video(
             strict_model_loading=strict_model_loading,
         )
 
-        if not any(predictors.values()):
-            print("[Spectra] Nenhum modelo carregado. Pulando análise visual.")
+        if not any(predictors.values()) and action_analyzer is None:
+            print("[Spectra] Nenhum modelo visual carregado. Pulando análise visual.")
             spectra_outputs = []
         else:
             spectra_outputs = build_spectra_outputs_for_scenes(
@@ -1079,6 +1193,10 @@ def process_video(
                 use_object_model_on_full_frame=use_object_model_on_full_frame,
                 person_cropper=person_cropper,
                 person_crops_output_dir=output_dirs["person_crops_dir"],
+                action_analyzer=action_analyzer,
+                action_crops_output_dir=output_dirs["action_crops_dir"],
+                spectra_action_threshold=spectra_action_threshold,
+                spectra_top_k=spectra_top_k,
             )
 
     narrative_timeline: List[Dict[str, Any]] = []
@@ -1093,11 +1211,11 @@ def process_video(
 
     if run_tts:
         audio_description_outputs = generate_audio_description_files(
-        narrative_timeline=narrative_timeline,
-        output_dir=output_dirs["audio_description_dir"],
-        tts_rate=tts_rate,
-        tts_volume=tts_volume,
-    )
+            narrative_timeline=narrative_timeline,
+            output_dir=output_dirs["audio_description_dir"],
+            tts_rate=tts_rate,
+            tts_volume=tts_volume,
+        )
 
     spectra_json_path = save_json(
         data=spectra_outputs,

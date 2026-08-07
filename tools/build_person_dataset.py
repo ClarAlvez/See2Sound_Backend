@@ -65,6 +65,7 @@ def clean_frame_paths(
     check_images: bool = True,
 ) -> pd.DataFrame:
     df["frame_path"] = df["frame_path"].astype("string")
+    df["frame_path"] = df["frame_path"].str.replace("\\", "/", regex=False)
 
     before = len(df)
 
@@ -417,9 +418,109 @@ def build_parser() -> argparse.ArgumentParser:
     sample_parser.add_argument("--random-state", type=int, default=42)
     sample_parser.add_argument("--no-check-images", action="store_true")
     sample_parser.set_defaults(func=command_sample)
+    
+    utk_parser = subparsers.add_parser("from-utkface")
+    utk_parser.add_argument("--input-dir", required=True)
+    utk_parser.add_argument("--output-csv", required=True)
+    utk_parser.add_argument("--max-rows", type=int, default=None)
+    utk_parser.add_argument("--random-state", type=int, default=42)
+    utk_parser.add_argument("--no-check-images", action="store_true")
+    utk_parser.set_defaults(func=command_from_utkface)
 
     return parser
 
+def age_to_spectra_labels(age: int):
+    if age <= 12:
+        return {
+            "child": 1,
+            "adult": 0,
+            "elderly": 0,
+        }
+
+    if age >= 60:
+        return {
+            "child": 0,
+            "adult": 0,
+            "elderly": 1,
+        }
+
+    return {
+        "child": 0,
+        "adult": 1,
+        "elderly": 0,
+    }
+    
+def command_from_utkface(args) -> None:
+    input_dir = Path(args.input_dir)
+    output_csv = Path(args.output_csv)
+
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Pasta não encontrada: {input_dir}")
+
+    image_paths = (
+        list(input_dir.rglob("*.jpg"))
+        + list(input_dir.rglob("*.jpeg"))
+        + list(input_dir.rglob("*.png"))
+    )
+
+    rows = []
+    skipped = 0
+
+    for image_path in sorted(image_paths):
+        name = image_path.name
+
+        try:
+            age_text = name.split("_")[0]
+            age = int(age_text)
+        except Exception:
+            skipped += 1
+            continue
+
+        labels = {
+            label: 0
+            for label in LABELS
+        }
+
+        labels["person"] = 1
+
+        age_labels = age_to_spectra_labels(age)
+
+        for label, value in age_labels.items():
+            if label in labels:
+                labels[label] = value
+
+        row = {
+            "frame_path": str(image_path),
+            "source_dataset": "utkface",
+            "source_age": age,
+        }
+
+        row.update(labels)
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+
+    if args.max_rows is not None:
+        df = df.sample(
+            n=min(args.max_rows, len(df)),
+            random_state=args.random_state,
+            replace=False,
+        )
+
+    df = clean_dataset(
+        df,
+        check_images=not args.no_check_images,
+    )
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+
+    print("\nDataset UTKFace convertido:")
+    print(output_csv)
+    print("Linhas:", len(df))
+    print("Ignoradas:", skipped)
+
+    print_dataset_summary(df)
 
 def main() -> None:
     parser = build_parser()
