@@ -20,6 +20,7 @@ data/training_reports/
 data/output/
 data/external/
 data/models/
+data/datasets/_legacy/
 
 # =========================
 # Arquivos gerados pelo pipeline

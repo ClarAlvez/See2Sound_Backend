@@ -8,6 +8,36 @@ from ai.spectra.Person.labels import LABELS
 from ai.spectra.Person.model import SpectraPersonNet
 from ai.spectra.data.transforms import get_test_transforms
 
+LABEL_MIN_THRESHOLDS = {
+    "person": 0.50,
+
+    "man": 0.70,
+    "woman": 0.70,
+
+    "child": 0.60,
+    "adult": 0.45,
+    "elderly": 0.60,
+
+    "short_hair": 0.50,
+    "long_hair": 0.60,
+    "bald_hair": 0.60,
+
+    "black_hair": 0.60,
+    "blonde_hair": 0.60,
+    "brown_hair": 0.60,
+    "gray_hair": 0.60,
+
+    "straight_hair": 0.65,
+    "wavy_hair": 0.65,
+    "bangs_hair": 0.65,
+    "receding_hairline": 0.65,
+
+    "glasses": 0.60,
+    "hat": 0.60,
+
+    "bag": 0.70,
+    "backpack": 0.70,
+}
 
 class PersonPredictor:
     """
@@ -178,7 +208,10 @@ class PersonPredictor:
         for label, probability in zip(self.labels, probabilities):
             score = float(probability)
 
-            if score >= threshold:
+            label_threshold = LABEL_MIN_THRESHOLDS.get(label, threshold)
+            final_threshold = max(threshold, label_threshold)
+
+            if score >= final_threshold:
                 predictions.append(
                     {
                         "label": label,
@@ -218,6 +251,7 @@ class PersonPredictor:
 
         exclusive_groups = [
             ["man", "woman"],
+            ["child", "adult", "elderly"],
             ["short_hair", "long_hair", "bald_hair"],
             ["black_hair", "blonde_hair", "brown_hair", "gray_hair"],
             ["straight_hair", "wavy_hair"],
