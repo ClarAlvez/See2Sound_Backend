@@ -5,7 +5,7 @@ import json
 import torch
 from PIL import Image
 
-from ai.spectra.Scene.labels import LABELS
+from ai.spectra.Scene.labels import LABELS, DERIVED_SCENE_GROUPS
 from ai.spectra.Scene.model import SpectraSceneNet
 from ai.spectra.data.transforms import get_test_transforms
 
@@ -61,7 +61,8 @@ class ScenePredictor:
         threshold=None,
         top_k=None,
         group_by_category=False,
-    ):
+        include_derived=True,
+        ):
         image_path = Path(image_path)
 
         image = self.load_image(image_path)
@@ -83,9 +84,15 @@ class ScenePredictor:
             "predictions": predictions,
         }
 
+        if include_derived:
+            result["derived_predictions"] = self.add_derived_predictions(
+                predictions=predictions,
+            )
+
         if group_by_category:
             result["grouped_predictions"] = {
                 "scene": predictions,
+                "scene_derived": result.get("derived_predictions", []),
                 "person": [],
                 "object": [],
             }
@@ -153,6 +160,39 @@ class ScenePredictor:
             values = values[:top_k]
 
         return values
+
+    def add_derived_predictions(self, predictions):
+        predictions_by_label = {
+            item["label"]: item
+            for item in predictions
+        }
+
+        derived_predictions = []
+
+        for derived_label, member_labels in DERIVED_SCENE_GROUPS.items():
+            active_members = [
+                predictions_by_label[label]
+                for label in member_labels
+                if label in predictions_by_label
+            ]
+
+            if not active_members:
+                continue
+
+            best_member = max(
+                active_members,
+                key=lambda item: item["score"],
+            )
+
+            derived_predictions.append(
+                {
+                    "label": derived_label,
+                    "score": best_member["score"],
+                    "derived_from": best_member["label"],
+                }
+            )
+
+        return derived_predictions
 
     def apply_exclusive_groups(self, predictions):
         exclusive_groups = [
@@ -273,7 +313,7 @@ def run_inference(args):
     return result, predictions
 
 
-def print_result(args, predictions):
+def print_result(args, result, predictions):
     print("=" * 80)
     print("SPECTRA SCENE NET - INFERÊNCIA")
     print("=" * 80)
@@ -285,7 +325,17 @@ def print_result(args, predictions):
     else:
         print("Threshold:", args.threshold)
 
-    print("\nPredições:")
+    derived_predictions = result.get("derived_predictions", [])
+
+    if derived_predictions:
+        print("\nPredições derivadas:")
+        for item in derived_predictions:
+            print(
+                f"{item['label']}: {item['score']:.4f} "
+                f"(via {item['derived_from']})"
+            )
+
+    print("\nPredições brutas:")
 
     if not predictions:
         print("Nenhuma label passou pelo threshold.")
@@ -314,6 +364,7 @@ def main():
 
     print_result(
         args=args,
+        result=result,
         predictions=predictions,
     )
 

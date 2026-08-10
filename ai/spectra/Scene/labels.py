@@ -19,11 +19,39 @@ SPECTRA_SCENE_LABELS = [
     "kitchen",
     "bedroom",
     "living_room",
-    "office",
-    "restaurant",
+
+    # Office subcategorias
+    "office_room",
+    "office_cubicles",
+    "home_office",
+    "conference_room",
+
+    # Restaurant subcategorias
+    "restaurant_indoor",
+    "fastfood_restaurant",
+    "cafeteria",
+    "dining_room",
+    "restaurant_patio",
+
     "store",
     "hospital",
     "sports_field",
 ]
 
 LABELS = SPECTRA_SCENE_LABELS
+
+DERIVED_SCENE_GROUPS = {
+    "office": [
+        "office_room",
+        "office_cubicles",
+        "home_office",
+        "conference_room",
+    ],
+    "restaurant": [
+        "restaurant_indoor",
+        "fastfood_restaurant",
+        "cafeteria",
+        "dining_room",
+        "restaurant_patio",
+    ],
+}

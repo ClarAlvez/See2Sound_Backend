@@ -142,7 +142,10 @@ CATEGORY_RULES: Dict[str, List[str]] = {
     "bathroom": ["room", "indoor"],
     "dining_room": ["restaurant", "room", "indoor"],
 
-    "office": ["office", "room", "indoor"],
+    "office": ["office_room", "room", "indoor"],
+    "office_cubicles": ["office_cubicles", "room", "indoor"],
+    "home_office": ["home_office", "room", "indoor"],
+    "conference_room": ["conference_room", "room", "indoor"],
     "conference_room": ["office", "room", "indoor"],
     "cubicle": ["office", "room", "indoor"],
 
@@ -150,7 +153,11 @@ CATEGORY_RULES: Dict[str, List[str]] = {
     "school": ["school", "indoor"],
     "corridor": ["school", "hospital", "indoor"],
 
-    "restaurant": ["restaurant", "room", "indoor"],
+    "restaurant": ["restaurant_indoor", "room", "indoor"],
+    "fastfood_restaurant": ["fastfood_restaurant", "room", "indoor"],
+    "cafeteria": ["cafeteria", "room", "indoor"],
+    "dining_room": ["dining_room", "room", "indoor"],
+    "restaurant_patio": ["restaurant_patio", "outdoor"],
     "cafeteria": ["restaurant", "room", "indoor"],
     "bar": ["restaurant", "room", "indoor"],
     "coffee_shop": ["restaurant", "store", "indoor"],
@@ -181,29 +188,107 @@ CATEGORY_RULES: Dict[str, List[str]] = {
 }
 
 EXACT_CATEGORY_RULES = {
-    "/o/office": ["office", "room", "indoor"],
-    "/o/office_cubicles": ["office", "room", "indoor"],
-    "/h/home_office": ["office", "room", "indoor"],
-    "/c/conference_room": ["office", "room", "indoor"],
+    # Office
+    "/o/office": [
+        "office_room",
+        "room",
+        "indoor",
+    ],
+    "/o/office_cubicles": [
+        "office_cubicles",
+        "room",
+        "indoor",
+    ],
+    "/h/home_office": [
+        "home_office",
+        "room",
+        "indoor",
+    ],
+    "/c/conference_room": [
+        "conference_room",
+        "room",
+        "indoor",
+    ],
 
-    "/r/restaurant": ["restaurant", "room", "indoor"],
-    "/f/fastfood_restaurant": ["restaurant", "room", "indoor"],
-    "/r/restaurant_patio": ["restaurant", "indoor"],
-    "/c/cafeteria": ["restaurant", "room", "indoor"],
-    "/s/sushi_bar": ["restaurant", "room", "indoor"],
-    "/d/dining_room": ["restaurant", "room", "indoor"],
+    # Restaurant
+    "/r/restaurant": [
+        "restaurant_indoor",
+        "room",
+        "indoor",
+    ],
+    "/f/fastfood_restaurant": [
+        "fastfood_restaurant",
+        "room",
+        "indoor",
+    ],
+    "/c/cafeteria": [
+        "cafeteria",
+        "room",
+        "indoor",
+    ],
+    "/d/dining_room": [
+        "dining_room",
+        "room",
+        "indoor",
+    ],
+    "/r/restaurant_patio": [
+        "restaurant_patio",
+        "outdoor",
+    ],
 
-    "/b/bedroom": ["bedroom", "room", "indoor"],
-    "/l/living_room": ["living_room", "room", "indoor"],
-    "/k/kitchen": ["kitchen", "room", "indoor"],
+    # Outros interiores
+    "/b/bedroom": [
+        "bedroom",
+        "room",
+        "indoor",
+    ],
+    "/l/living_room": [
+        "living_room",
+        "room",
+        "indoor",
+    ],
+    "/k/kitchen": [
+        "kitchen",
+        "room",
+        "indoor",
+    ],
 
-    "/c/classroom": ["classroom", "school", "room", "indoor"],
-    "/k/kindergarden_classroom": ["classroom", "school", "room", "indoor"],
-    "/k/kindergarten_classroom": ["classroom", "school", "room", "indoor"],
+    # Escola
+    "/c/classroom": [
+        "classroom",
+        "school",
+        "room",
+        "indoor",
+    ],
+    "/k/kindergarden_classroom": [
+        "classroom",
+        "school",
+        "room",
+        "indoor",
+    ],
+    "/k/kindergarten_classroom": [
+        "classroom",
+        "school",
+        "room",
+        "indoor",
+    ],
 
-    "/h/hospital": ["hospital", "room", "indoor"],
-    "/h/hospital_room": ["hospital", "room", "indoor"],
-    "/o/operating_room": ["hospital", "room", "indoor"],
+    # Hospital
+    "/h/hospital": [
+        "hospital",
+        "room",
+        "indoor",
+    ],
+    "/h/hospital_room": [
+        "hospital",
+        "room",
+        "indoor",
+    ],
+    "/o/operating_room": [
+        "hospital",
+        "room",
+        "indoor",
+    ],
 }
 
 
@@ -445,13 +530,24 @@ def infer_primary_label(labels: Sequence[str]) -> Optional[str]:
         "city",
         "park",
         "field",
+
         "kitchen",
         "bedroom",
         "living_room",
-        "office",
+
+        "office_room",
+        "office_cubicles",
+        "home_office",
+        "conference_room",
+
+        "restaurant_indoor",
+        "fastfood_restaurant",
+        "cafeteria",
+        "dining_room",
+        "restaurant_patio",
+
         "classroom",
         "school",
-        "restaurant",
         "store",
         "hospital",
         "sports_field",

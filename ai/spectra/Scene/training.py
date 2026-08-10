@@ -30,10 +30,19 @@ class SceneTrainingConfig:
     freeze_backbone: bool = False
     threshold: float = 0.4
     save_plots: bool = True
+    cross_validation: bool = False
+    folds: int = 5
 
 
 def train_scene_model(dataset_path, output_dir, config=None):
     config = config or SceneTrainingConfig()
+
+    if config.cross_validation:
+        return _train_cross_validation(
+            dataset_path=dataset_path,
+            output_dir=output_dir,
+            config=config,
+        )
 
     return _train(
         dataset_path=dataset_path,
@@ -200,6 +209,306 @@ def _train(dataset_path, output_dir, config):
         "loss_plot_path": str(loss_plot_path) if config.save_plots else None,
         "metrics_plot_path": str(metrics_plot_path) if config.save_plots else None,
     }
+
+def create_k_fold_indices(dataset_size, folds, seed):
+    generator = torch.Generator().manual_seed(seed)
+
+    shuffled_indices = torch.randperm(
+        dataset_size,
+        generator=generator,
+    ).tolist()
+
+    fold_sizes = []
+
+    base_fold_size = dataset_size // folds
+    remainder = dataset_size % folds
+
+    for fold_index in range(folds):
+        fold_size = base_fold_size
+
+        if fold_index < remainder:
+            fold_size += 1
+
+        fold_sizes.append(fold_size)
+
+    fold_indices = []
+    current_index = 0
+
+    for fold_size in fold_sizes:
+        fold = shuffled_indices[current_index:current_index + fold_size]
+        fold_indices.append(fold)
+
+        current_index += fold_size
+
+    return fold_indices
+
+
+def build_cross_validation_summary(fold_results, best_global_model_path):
+    validation_losses = [
+        result["best_validation_loss"]
+        for result in fold_results
+    ]
+
+    validation_f1_scores = [
+        result["best_validation_f1"]
+        for result in fold_results
+    ]
+
+    mean_validation_loss = sum(validation_losses) / max(1, len(validation_losses))
+    mean_validation_f1 = sum(validation_f1_scores) / max(1, len(validation_f1_scores))
+
+    best_fold = max(
+        fold_results,
+        key=lambda result: result["best_validation_f1"],
+    )
+
+    summary = {
+        "folds": len(fold_results),
+        "mean_validation_loss": mean_validation_loss,
+        "mean_validation_f1": mean_validation_f1,
+        "best_fold": best_fold["fold"],
+        "best_global_model_path": str(best_global_model_path),
+        "fold_results": fold_results,
+    }
+
+    return summary
+
+def _train_cross_validation(dataset_path, output_dir, config):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    train_data = SpectraImageDataset(
+        csv_path=dataset_path,
+        transform=get_train_transforms(config.image_size),
+        label_columns=LABELS,
+    )
+
+    validation_data = SpectraImageDataset(
+        csv_path=dataset_path,
+        transform=get_validation_transforms(config.image_size),
+        label_columns=LABELS,
+    )
+
+    dataset_size = len(train_data)
+
+    if dataset_size < config.folds:
+        raise ValueError(
+            "O número de folds não pode ser maior que o tamanho do dataset. "
+            f"Dataset: {dataset_size}, folds: {config.folds}"
+        )
+
+    fold_indices = create_k_fold_indices(
+        dataset_size=dataset_size,
+        folds=config.folds,
+        seed=config.seed,
+    )
+
+    fold_results = []
+    best_global_f1 = -1.0
+    best_global_loss = float("inf")
+    best_global_model_path = None
+
+    print("=" * 80)
+    print("TREINANDO SPECTRA SCENE NET - CROSS VALIDATION")
+    print("=" * 80)
+    print("Dataset:", dataset_path)
+    print("Output:", output_dir)
+    print("Device:", device)
+    print("Labels:", len(LABELS))
+    print("Folds:", config.folds)
+    print("Epochs por fold:", config.epochs)
+    print("Backbone:", config.backbone_name)
+    print("Freeze backbone:", config.freeze_backbone)
+    print("Threshold:", config.threshold)
+    print("=" * 80)
+
+    for fold_index in range(config.folds):
+        fold_number = fold_index + 1
+        fold_output_dir = output_dir / f"fold_{fold_number}"
+        fold_output_dir.mkdir(parents=True, exist_ok=True)
+
+        validation_indices = fold_indices[fold_index]
+
+        train_indices = []
+
+        for index, indices in enumerate(fold_indices):
+            if index == fold_index:
+                continue
+
+            train_indices.extend(indices)
+
+        train_loader = DataLoader(
+            dataset=Subset(train_data, train_indices),
+            batch_size=config.batch_size,
+            shuffle=True,
+            num_workers=config.num_workers,
+        )
+
+        validation_loader = DataLoader(
+            dataset=Subset(validation_data, validation_indices),
+            batch_size=config.batch_size,
+            shuffle=False,
+            num_workers=config.num_workers,
+        )
+
+        model = SpectraSceneNet(
+            output_size=len(LABELS),
+            image_size=config.image_size,
+            dropout_rate=config.dropout_rate,
+            backbone_name=config.backbone_name,
+            pretrained=config.pretrained,
+            freeze_backbone=config.freeze_backbone,
+        ).to(device)
+
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+        )
+
+        criterion = nn.BCEWithLogitsLoss()
+
+        fold_checkpoint_path = fold_output_dir / "scene_net_best.pt"
+        fold_history_json_path = fold_output_dir / "training_history.json"
+        fold_history_csv_path = fold_output_dir / "training_history.csv"
+        fold_loss_plot_path = fold_output_dir / "training_loss.png"
+        fold_metrics_plot_path = fold_output_dir / "training_metrics.png"
+
+        best_fold_loss = float("inf")
+        best_fold_f1 = -1.0
+
+        history = {
+            "train_loss": [],
+            "validation_loss": [],
+            "validation_precision": [],
+            "validation_recall": [],
+            "validation_f1": [],
+        }
+
+        print("\n" + "=" * 80)
+        print(f"FOLD {fold_number}/{config.folds}")
+        print("=" * 80)
+        print("Train samples:", len(train_indices))
+        print("Validation samples:", len(validation_indices))
+
+        for epoch in range(config.epochs):
+            train_loss = run_epoch(
+                model=model,
+                loader=train_loader,
+                criterion=criterion,
+                device=device,
+                optimizer=optimizer,
+            )
+
+            validation_loss, validation_metrics = evaluate(
+                model=model,
+                loader=validation_loader,
+                criterion=criterion,
+                device=device,
+                threshold=config.threshold,
+            )
+
+            validation_f1 = validation_metrics["f1"]
+
+            history["train_loss"].append(train_loss)
+            history["validation_loss"].append(validation_loss)
+            history["validation_precision"].append(validation_metrics["precision"])
+            history["validation_recall"].append(validation_metrics["recall"])
+            history["validation_f1"].append(validation_f1)
+
+            print(
+                f"Fold {fold_number}/{config.folds} "
+                f"- Epoch {epoch + 1}/{config.epochs} "
+                f"- train_loss: {train_loss:.4f} "
+                f"- validation_loss: {validation_loss:.4f} "
+                f"- precision: {validation_metrics['precision']:.4f} "
+                f"- recall: {validation_metrics['recall']:.4f} "
+                f"- f1: {validation_f1:.4f}"
+            )
+
+            should_save_fold_model = (
+                validation_loss < best_fold_loss
+                or validation_f1 > best_fold_f1
+            )
+
+            if should_save_fold_model:
+                best_fold_loss = validation_loss
+                best_fold_f1 = validation_f1
+
+                save_checkpoint(
+                    checkpoint_path=fold_checkpoint_path,
+                    model=model,
+                    config=config,
+                    best_validation_loss=best_fold_loss,
+                )
+
+                print("Novo melhor modelo do fold salvo:", fold_checkpoint_path)
+
+        save_training_history_json(
+            history=history,
+            output_path=fold_history_json_path,
+        )
+
+        save_training_history_csv(
+            history=history,
+            output_path=fold_history_csv_path,
+        )
+
+        if config.save_plots:
+            save_training_plots(
+                history=history,
+                loss_plot_path=fold_loss_plot_path,
+                metrics_plot_path=fold_metrics_plot_path,
+            )
+
+        fold_result = {
+            "fold": fold_number,
+            "best_validation_loss": best_fold_loss,
+            "best_validation_f1": best_fold_f1,
+            "best_model_path": str(fold_checkpoint_path),
+            "history_json_path": str(fold_history_json_path),
+            "history_csv_path": str(fold_history_csv_path),
+            "loss_plot_path": str(fold_loss_plot_path) if config.save_plots else None,
+            "metrics_plot_path": str(fold_metrics_plot_path) if config.save_plots else None,
+        }
+
+        fold_results.append(fold_result)
+
+        is_best_global = (
+            best_fold_f1 > best_global_f1
+            or (
+                best_fold_f1 == best_global_f1
+                and best_fold_loss < best_global_loss
+            )
+        )
+
+        if is_best_global:
+            best_global_f1 = best_fold_f1
+            best_global_loss = best_fold_loss
+            best_global_model_path = fold_checkpoint_path
+
+    summary = build_cross_validation_summary(
+        fold_results=fold_results,
+        best_global_model_path=best_global_model_path,
+    )
+
+    summary_path = output_dir / "cross_validation_summary.json"
+
+    with open(summary_path, "w", encoding="utf-8") as file:
+        json.dump(summary, file, indent=4, ensure_ascii=False)
+
+    print("\n" + "=" * 80)
+    print("CROSS VALIDATION FINALIZADO")
+    print("=" * 80)
+    print("Folds:", config.folds)
+    print("Média validation loss:", f"{summary['mean_validation_loss']:.4f}")
+    print("Média validation F1:", f"{summary['mean_validation_f1']:.4f}")
+    print("Melhor modelo global:", summary["best_global_model_path"])
+    print("Resumo salvo em:", summary_path)
+
+    return summary
 
 
 def create_train_validation_split(dataset_size, validation_ratio, seed):
@@ -442,6 +751,8 @@ def build_config_from_args(args):
         freeze_backbone=args.freeze_backbone,
         threshold=args.threshold,
         save_plots=not args.no_plots,
+        cross_validation=args.cross_validation,
+        folds=args.folds,
     )
 
 
@@ -545,15 +856,31 @@ def main():
         help="Desativa geração dos gráficos de treinamento.",
     )
 
+    parser.add_argument(
+        "--cross-validation",
+        action="store_true",
+        help="Ativa treino com K-Fold cross-validation.",
+    )
+
+    parser.add_argument(
+        "--folds",
+        type=int,
+        default=5,
+        help="Número de folds para cross-validation.",
+    )
+
     args = parser.parse_args()
 
     config = build_config_from_args(args)
 
-    train_scene_model(
+    result = train_scene_model(
         dataset_path=args.dataset_path,
         output_dir=args.output_dir,
         config=config,
     )
+
+    print("\nTreinamento finalizado.")
+    print(json.dumps(result, indent=4, ensure_ascii=False))
 
 
 if __name__ == "__main__":
