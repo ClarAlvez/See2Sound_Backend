@@ -3,7 +3,23 @@ from pathlib import Path
 
 import pandas as pd
 
-from ai.spectra.labels.label_sets import get_labels_for_task
+from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
+from ai.spectra.Person.labels import LABELS
+from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
+
+
+LABELS_BY_TASK = {
+    "scene": SPECTRA_SCENE_LABELS,
+    "person": LABELS,
+    "object": SPECTRA_OBJECT_LABELS,
+}
+
+
+def get_labels_for_task(task_name):
+    try:
+        return LABELS_BY_TASK[task_name]
+    except KeyError as error:
+        raise ValueError(f"Task inválida: {task_name}") from error
 
 
 def create_empty_dataset_template(output_csv_path, task_name):

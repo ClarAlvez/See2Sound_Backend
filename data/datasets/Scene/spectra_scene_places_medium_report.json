@@ -1,0 +1,538 @@
+{
+    "total_rows": 4486,
+    "active_labels": [
+        "indoor",
+        "outdoor",
+        "room",
+        "street",
+        "road",
+        "city",
+        "desert",
+        "beach",
+        "ocean",
+        "forest",
+        "mountain",
+        "park",
+        "field",
+        "school",
+        "classroom",
+        "kitchen",
+        "bedroom",
+        "living_room",
+        "office",
+        "restaurant",
+        "store",
+        "hospital",
+        "sports_field"
+    ],
+    "recommended_missing_from_label_set": [
+        "day",
+        "night",
+        "dark_place",
+        "bright_place"
+    ],
+    "label_counts": {
+        "beach": 247,
+        "bedroom": 77,
+        "city": 378,
+        "classroom": 105,
+        "desert": 250,
+        "field": 333,
+        "forest": 250,
+        "hospital": 331,
+        "indoor": 1930,
+        "kitchen": 168,
+        "living_room": 83,
+        "mountain": 250,
+        "ocean": 497,
+        "office": 250,
+        "outdoor": 2556,
+        "park": 283,
+        "restaurant": 336,
+        "road": 494,
+        "room": 1413,
+        "school": 355,
+        "sports_field": 308,
+        "store": 267,
+        "street": 296
+    },
+    "primary_label_counts": {
+        "beach": 247,
+        "bedroom": 77,
+        "city": 82,
+        "classroom": 86,
+        "desert": 250,
+        "field": 250,
+        "forest": 250,
+        "hospital": 247,
+        "kitchen": 168,
+        "living_room": 83,
+        "mountain": 250,
+        "ocean": 250,
+        "office": 250,
+        "park": 250,
+        "restaurant": 250,
+        "road": 250,
+        "room": 250,
+        "school": 250,
+        "sports_field": 246,
+        "store": 250,
+        "street": 250
+    },
+    "source_category_counts": {
+        "/a/airfield": 20,
+        "/a/alley": 32,
+        "/a/amusement_park": 19,
+        "/a/art_school": 84,
+        "/a/athletic_field/outdoor": 17,
+        "/a/auto_showroom": 17,
+        "/b/bakery/shop": 8,
+        "/b/ballroom": 12,
+        "/b/bamboo_forest": 44,
+        "/b/bar": 22,
+        "/b/barn": 24,
+        "/b/barndoor": 24,
+        "/b/baseball_field": 18,
+        "/b/bathroom": 8,
+        "/b/beach": 78,
+        "/b/beach_house": 86,
+        "/b/bedroom": 77,
+        "/b/beer_garden": 19,
+        "/b/bookstore": 6,
+        "/b/botanical_garden": 21,
+        "/b/bowling_alley": 45,
+        "/b/butchers_shop": 8,
+        "/c/cafeteria": 22,
+        "/c/canal/urban": 35,
+        "/c/candy_store": 12,
+        "/c/canyon": 37,
+        "/c/childs_room": 17,
+        "/c/classroom": 86,
+        "/c/clean_room": 16,
+        "/c/cliff": 44,
+        "/c/clothing_store": 12,
+        "/c/coast": 83,
+        "/c/coffee_shop": 17,
+        "/c/computer_room": 11,
+        "/c/conference_room": 45,
+        "/c/corn_field": 10,
+        "/c/corridor": 84,
+        "/c/crosswalk": 31,
+        "/d/department_store": 12,
+        "/d/desert/sand": 63,
+        "/d/desert/vegetation": 61,
+        "/d/desert_road": 61,
+        "/d/dining_room": 16,
+        "/d/dorm_room": 8,
+        "/d/downtown": 35,
+        "/d/dressing_room": 8,
+        "/d/drugstore": 10,
+        "/e/engine_room": 15,
+        "/f/fabric_store": 8,
+        "/f/farm": 17,
+        "/f/fastfood_restaurant": 29,
+        "/f/field/cultivated": 20,
+        "/f/field/wild": 20,
+        "/f/field_road": 83,
+        "/f/flea_market/indoor": 12,
+        "/f/florist_shop/indoor": 15,
+        "/f/football_field": 15,
+        "/f/forest/broadleaf": 52,
+        "/f/forest_path": 53,
+        "/f/forest_road": 52,
+        "/f/formal_garden": 16,
+        "/g/galley": 24,
+        "/g/general_store/indoor": 12,
+        "/g/general_store/outdoor": 11,
+        "/g/gift_shop": 8,
+        "/h/hardware_store": 10,
+        "/h/hayfield": 15,
+        "/h/highway": 81,
+        "/h/home_office": 38,
+        "/h/hospital": 82,
+        "/h/hospital_room": 84,
+        "/h/hotel_room": 10,
+        "/j/japanese_garden": 14,
+        "/j/jewelry_shop": 11,
+        "/k/kindergarden_classroom": 19,
+        "/k/kitchen": 82,
+        "/l/lecture_room": 12,
+        "/l/living_room": 83,
+        "/l/locker_room": 14,
+        "/m/market/indoor": 5,
+        "/m/market/outdoor": 9,
+        "/m/moat/water": 37,
+        "/m/mountain": 37,
+        "/m/mountain_path": 45,
+        "/m/mountain_snowy": 41,
+        "/o/ocean": 36,
+        "/o/office": 46,
+        "/o/office_building": 48,
+        "/o/office_cubicles": 37,
+        "/o/operating_room": 81,
+        "/p/park": 15,
+        "/p/parking_garage/indoor": 12,
+        "/p/parking_garage/outdoor": 21,
+        "/p/parking_lot": 17,
+        "/p/pasture": 16,
+        "/p/pet_shop": 15,
+        "/p/playroom": 11,
+        "/r/railroad_track": 86,
+        "/r/rainforest": 49,
+        "/r/recreation_room": 10,
+        "/r/repair_shop": 7,
+        "/r/restaurant": 28,
+        "/r/restaurant_kitchen": 86,
+        "/r/restaurant_patio": 26,
+        "/r/roof_garden": 20,
+        "/s/sandbox": 65,
+        "/s/schoolhouse": 82,
+        "/s/server_room": 17,
+        "/s/shoe_shop": 17,
+        "/s/shopfront": 10,
+        "/s/shopping_mall/indoor": 7,
+        "/s/skyscraper": 82,
+        "/s/snowfield": 20,
+        "/s/soccer_field": 12,
+        "/s/stadium/baseball": 82,
+        "/s/stadium/football": 85,
+        "/s/stadium/soccer": 79,
+        "/s/storage_room": 8,
+        "/s/street": 48,
+        "/s/supermarket": 14,
+        "/s/sushi_bar": 20,
+        "/t/television_room": 15,
+        "/t/throne_room": 18,
+        "/t/topiary_garden": 25,
+        "/t/toyshop": 11,
+        "/t/tree_farm": 17,
+        "/u/underwater/ocean_deep": 35,
+        "/u/utility_room": 14,
+        "/v/valley": 46,
+        "/v/vegetable_garden": 20,
+        "/v/veterinarians_office": 36,
+        "/w/waiting_room": 9,
+        "/w/water_park": 33,
+        "/w/water_tower": 36,
+        "/w/waterfall": 35,
+        "/w/watering_hole": 38,
+        "/w/wet_bar": 22,
+        "/w/wheat_field": 20,
+        "/w/wind_farm": 13,
+        "/z/zen_garden": 12
+    },
+    "generated_split_counts": {
+        "test": 485,
+        "train": 3517,
+        "validation": 484
+    },
+    "category_rules": {
+        "street": [
+            "street",
+            "road",
+            "city",
+            "outdoor"
+        ],
+        "alley": [
+            "street",
+            "city",
+            "outdoor"
+        ],
+        "road": [
+            "road",
+            "outdoor"
+        ],
+        "highway": [
+            "road",
+            "outdoor"
+        ],
+        "crosswalk": [
+            "street",
+            "road",
+            "city",
+            "outdoor"
+        ],
+        "downtown": [
+            "city",
+            "street",
+            "outdoor"
+        ],
+        "skyscraper": [
+            "city",
+            "outdoor"
+        ],
+        "city": [
+            "city",
+            "outdoor"
+        ],
+        "urban": [
+            "city",
+            "street",
+            "outdoor"
+        ],
+        "desert": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "sand": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "dune": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "beach": [
+            "beach",
+            "ocean",
+            "outdoor",
+            "bright_place"
+        ],
+        "coast": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "coastline": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "shore": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "ocean": [
+            "ocean",
+            "outdoor"
+        ],
+        "sea": [
+            "ocean",
+            "outdoor"
+        ],
+        "water": [
+            "ocean",
+            "outdoor"
+        ],
+        "forest": [
+            "forest",
+            "outdoor"
+        ],
+        "woods": [
+            "forest",
+            "outdoor"
+        ],
+        "rainforest": [
+            "forest",
+            "outdoor"
+        ],
+        "jungle": [
+            "forest",
+            "outdoor"
+        ],
+        "mountain": [
+            "mountain",
+            "outdoor"
+        ],
+        "valley": [
+            "mountain",
+            "outdoor"
+        ],
+        "cliff": [
+            "mountain",
+            "outdoor"
+        ],
+        "canyon": [
+            "mountain",
+            "outdoor"
+        ],
+        "park": [
+            "park",
+            "outdoor"
+        ],
+        "garden": [
+            "park",
+            "outdoor"
+        ],
+        "field": [
+            "field",
+            "outdoor"
+        ],
+        "pasture": [
+            "field",
+            "outdoor"
+        ],
+        "meadow": [
+            "field",
+            "outdoor"
+        ],
+        "farm": [
+            "field",
+            "outdoor"
+        ],
+        "room": [
+            "room",
+            "indoor"
+        ],
+        "bedroom": [
+            "bedroom",
+            "room",
+            "indoor"
+        ],
+        "living_room": [
+            "living_room",
+            "room",
+            "indoor"
+        ],
+        "kitchen": [
+            "kitchen",
+            "room",
+            "indoor"
+        ],
+        "bathroom": [
+            "room",
+            "indoor"
+        ],
+        "dining_room": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "office": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "conference_room": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "cubicle": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "classroom": [
+            "classroom",
+            "school",
+            "room",
+            "indoor"
+        ],
+        "school": [
+            "school",
+            "indoor"
+        ],
+        "corridor": [
+            "school",
+            "hospital",
+            "indoor"
+        ],
+        "restaurant": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "cafeteria": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "bar": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "coffee_shop": [
+            "restaurant",
+            "store",
+            "indoor"
+        ],
+        "store": [
+            "store",
+            "indoor"
+        ],
+        "shop": [
+            "store",
+            "indoor"
+        ],
+        "supermarket": [
+            "store",
+            "indoor"
+        ],
+        "market": [
+            "store",
+            "indoor"
+        ],
+        "mall": [
+            "store",
+            "indoor"
+        ],
+        "hospital": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "hospital_room": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "operating_room": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "stadium": [
+            "sports_field",
+            "outdoor"
+        ],
+        "football_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "soccer_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "baseball_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "athletic_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "sports_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "night": [
+            "night",
+            "dark_place"
+        ],
+        "dark": [
+            "dark_place"
+        ],
+        "sunny": [
+            "day",
+            "bright_place"
+        ],
+        "bright": [
+            "bright_place"
+        ],
+        "day": [
+            "day",
+            "bright_place"
+        ]
+    }
+}

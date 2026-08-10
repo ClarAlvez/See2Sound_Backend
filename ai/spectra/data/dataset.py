@@ -5,18 +5,12 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from ai.spectra.labels.label_sets import get_labels_for_task
-
 
 class SpectraImageDataset(Dataset):
     """
     Dataset genérico da Spectra.
 
-    Pode ser usado para:
-    - scene
-    - person
-    - object
-    - all
+    Recebe os rótulos explicitamente do módulo Person, Object ou Scene.
 
     O CSV precisa ter:
     - frame_path
@@ -28,17 +22,13 @@ class SpectraImageDataset(Dataset):
         csv_path,
         transform=None,
         image_root_dir=None,
-        task_name="scene",
         label_columns=None,
     ):
         self.csv_path = Path(csv_path)
         self.transform = transform
-        self.task_name = task_name
-
         if label_columns is None:
-            self.label_columns = get_labels_for_task(task_name)
-        else:
-            self.label_columns = label_columns
+            raise ValueError("label_columns deve ser fornecido pelo módulo do modelo")
+        self.label_columns = label_columns
 
         if image_root_dir is not None:
             self.image_root_dir = Path(image_root_dir)

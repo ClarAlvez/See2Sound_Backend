@@ -1,8 +1,21 @@
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from ai.spectra.inference.predictor import SpectraPredictor
-from ai.spectra.labels.label_sets import split_predictions_by_group
+from ai.spectra.predictor import SpectraPredictor
+
+
+def split_predictions_by_group(predictions):
+    from ai.spectra.Object.labels import SPECTRA_OBJECT_LABELS
+    from ai.spectra.Person.labels import LABELS
+    from ai.spectra.Scene.labels import SPECTRA_SCENE_LABELS
+
+    groups = {"scene": [], "person": [], "object": []}
+    label_sets = {"scene": SPECTRA_SCENE_LABELS, "person": LABELS, "object": SPECTRA_OBJECT_LABELS}
+    for prediction in predictions:
+        for name, labels in label_sets.items():
+            if prediction["label"] in labels:
+                groups[name].append(prediction)
+    return groups
 
 
 class Spectra:
@@ -23,7 +36,7 @@ class Spectra:
 
     def __init__(
         self,
-        model_path="data/models/spectra/spectra_vision_net_best.pt",
+        model_path="data/models/spectra_scene/scene_net_best.pt",
         threshold=0.5,
         top_k=10,
     ):

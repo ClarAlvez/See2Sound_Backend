@@ -1,0 +1,393 @@
+{
+    "total_rows": 147,
+    "active_labels": [
+        "indoor",
+        "outdoor",
+        "room",
+        "street",
+        "road",
+        "city",
+        "desert",
+        "beach",
+        "ocean",
+        "forest",
+        "mountain",
+        "park",
+        "field",
+        "school",
+        "classroom",
+        "kitchen",
+        "bedroom",
+        "living_room",
+        "office",
+        "restaurant",
+        "store",
+        "hospital",
+        "sports_field"
+    ],
+    "recommended_missing_from_label_set": [
+        "day",
+        "night",
+        "dark_place",
+        "bright_place"
+    ],
+    "label_counts": {
+        "beach": 26,
+        "bedroom": 0,
+        "city": 0,
+        "classroom": 0,
+        "desert": 0,
+        "field": 0,
+        "forest": 67,
+        "hospital": 0,
+        "indoor": 0,
+        "kitchen": 0,
+        "living_room": 0,
+        "mountain": 0,
+        "ocean": 80,
+        "office": 0,
+        "outdoor": 147,
+        "park": 11,
+        "restaurant": 0,
+        "road": 16,
+        "room": 0,
+        "school": 0,
+        "sports_field": 0,
+        "store": 0,
+        "street": 0
+    },
+    "primary_label_counts": {
+        "beach": 26,
+        "forest": 67,
+        "ocean": 54
+    },
+    "source_category_counts": {
+        "/b/bamboo_forest": 13,
+        "/b/beach": 8,
+        "/b/beach_house": 9,
+        "/c/coast": 9,
+        "/f/forest/broadleaf": 10,
+        "/f/forest_path": 14,
+        "/f/forest_road": 16,
+        "/m/moat/water": 13,
+        "/o/ocean": 11,
+        "/r/rainforest": 14,
+        "/u/underwater/ocean_deep": 12,
+        "/w/water_park": 11,
+        "/w/water_tower": 7
+    },
+    "generated_split_counts": {
+        "test": 16,
+        "train": 118,
+        "validation": 13
+    },
+    "category_rules": {
+        "street": [
+            "street",
+            "road",
+            "city",
+            "outdoor"
+        ],
+        "alley": [
+            "street",
+            "city",
+            "outdoor"
+        ],
+        "road": [
+            "road",
+            "outdoor"
+        ],
+        "highway": [
+            "road",
+            "outdoor"
+        ],
+        "crosswalk": [
+            "street",
+            "road",
+            "city",
+            "outdoor"
+        ],
+        "downtown": [
+            "city",
+            "street",
+            "outdoor"
+        ],
+        "skyscraper": [
+            "city",
+            "outdoor"
+        ],
+        "city": [
+            "city",
+            "outdoor"
+        ],
+        "urban": [
+            "city",
+            "street",
+            "outdoor"
+        ],
+        "desert": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "sand": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "dune": [
+            "desert",
+            "outdoor",
+            "bright_place"
+        ],
+        "beach": [
+            "beach",
+            "ocean",
+            "outdoor",
+            "bright_place"
+        ],
+        "coast": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "coastline": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "shore": [
+            "beach",
+            "ocean",
+            "outdoor"
+        ],
+        "ocean": [
+            "ocean",
+            "outdoor"
+        ],
+        "sea": [
+            "ocean",
+            "outdoor"
+        ],
+        "water": [
+            "ocean",
+            "outdoor"
+        ],
+        "forest": [
+            "forest",
+            "outdoor"
+        ],
+        "woods": [
+            "forest",
+            "outdoor"
+        ],
+        "rainforest": [
+            "forest",
+            "outdoor"
+        ],
+        "jungle": [
+            "forest",
+            "outdoor"
+        ],
+        "mountain": [
+            "mountain",
+            "outdoor"
+        ],
+        "valley": [
+            "mountain",
+            "outdoor"
+        ],
+        "cliff": [
+            "mountain",
+            "outdoor"
+        ],
+        "canyon": [
+            "mountain",
+            "outdoor"
+        ],
+        "park": [
+            "park",
+            "outdoor"
+        ],
+        "garden": [
+            "park",
+            "outdoor"
+        ],
+        "field": [
+            "field",
+            "outdoor"
+        ],
+        "pasture": [
+            "field",
+            "outdoor"
+        ],
+        "meadow": [
+            "field",
+            "outdoor"
+        ],
+        "farm": [
+            "field",
+            "outdoor"
+        ],
+        "room": [
+            "room",
+            "indoor"
+        ],
+        "bedroom": [
+            "bedroom",
+            "room",
+            "indoor"
+        ],
+        "living_room": [
+            "living_room",
+            "room",
+            "indoor"
+        ],
+        "kitchen": [
+            "kitchen",
+            "room",
+            "indoor"
+        ],
+        "bathroom": [
+            "room",
+            "indoor"
+        ],
+        "dining_room": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "office": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "conference_room": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "cubicle": [
+            "office",
+            "room",
+            "indoor"
+        ],
+        "classroom": [
+            "classroom",
+            "school",
+            "room",
+            "indoor"
+        ],
+        "school": [
+            "school",
+            "indoor"
+        ],
+        "corridor": [
+            "school",
+            "hospital",
+            "indoor"
+        ],
+        "restaurant": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "cafeteria": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "bar": [
+            "restaurant",
+            "room",
+            "indoor"
+        ],
+        "coffee_shop": [
+            "restaurant",
+            "store",
+            "indoor"
+        ],
+        "store": [
+            "store",
+            "indoor"
+        ],
+        "shop": [
+            "store",
+            "indoor"
+        ],
+        "supermarket": [
+            "store",
+            "indoor"
+        ],
+        "market": [
+            "store",
+            "indoor"
+        ],
+        "mall": [
+            "store",
+            "indoor"
+        ],
+        "hospital": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "hospital_room": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "operating_room": [
+            "hospital",
+            "room",
+            "indoor"
+        ],
+        "stadium": [
+            "sports_field",
+            "outdoor"
+        ],
+        "football_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "soccer_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "baseball_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "athletic_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "sports_field": [
+            "sports_field",
+            "field",
+            "outdoor"
+        ],
+        "night": [
+            "night",
+            "dark_place"
+        ],
+        "dark": [
+            "dark_place"
+        ],
+        "sunny": [
+            "day",
+            "bright_place"
+        ],
+        "bright": [
+            "bright_place"
+        ],
+        "day": [
+            "day",
+            "bright_place"
+        ]
+    }
+}

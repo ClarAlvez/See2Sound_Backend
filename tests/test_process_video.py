@@ -4,20 +4,23 @@ result = process_video(
     video_path="data/raw_videos/video_teste.mp4",
     output_base_dir="data/output",
 
-    scene_model_path="data/models/spectra_scene/scene_net_best.pt",
-    person_model_path="data/models/spectra_person/person_net_best.pt",
+    scene_model_path="data/models/Scene/scene_net_best.pt",
+    person_model_path="data/models/Person/person_net_best.pt",
     object_model_path=None,
-
-    spectra_scene_threshold=0.45,
-    spectra_person_threshold=0.45,
-    spectra_top_k=20,
-
-    use_person_cropper=True,
-    use_person_model_on_full_frame=False,
+    action_model_path="data/models/Actions/action_net_best.pt",
 
     run_spectra=True,
     run_narrative=False,
     run_tts=False,
+
+    spectra_scene_threshold=0.45,
+    spectra_action_threshold=0.3,
+    spectra_top_k=10,
+
+    use_person_cropper=True,
+    use_action_model=True,
+    use_action_person_cropper=True,
+    action_max_people=5,
 )
 
 print("Pipeline finalizado.")
