@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List
 from datasets import load_dataset
 
+import cv2
 import pandas as pd
 
 from ai.spectra.Actions.labels import LABELS
@@ -478,29 +479,202 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hf_parser.set_defaults(func=command_from_huggingface)
 
+    ucf_parser = subparsers.add_parser("from-ucf101")
+    ucf_parser.add_argument(
+        "--input-dir",
+        default="data/external/actions/UCF101",
+    )
+    ucf_parser.add_argument(
+        "--output-image-dir",
+        default="data/external/actions/ucf101_frames",
+    )
+    ucf_parser.add_argument(
+        "--output-csv",
+        default="data/datasets/Actions/action_ucf101_labels.csv",
+    )
+    ucf_parser.add_argument(
+        "--frames-per-video",
+        type=int,
+        default=3,
+    )
+    ucf_parser.add_argument(
+        "--max-videos",
+        type=int,
+        default=None,
+    )
+    ucf_parser.add_argument(
+        "--no-check-images",
+        action="store_true",
+    )
+    ucf_parser.set_defaults(func=command_from_ucf101)
+
     return parser
 
+
 def map_hf_label_to_action(label_name: str) -> List[str]:
-    label_name = label_name.lower().strip()
+    label_name = normalize_action_name(label_name)
 
     mapping = {
+        # Human Action Recognition
         "running": ["running", "moving", "fast_motion"],
         "walking": ["walking", "moving"],
         "cycling": ["cycling", "moving"],
         "dancing": ["dancing", "moving"],
         "sitting": ["sitting", "still"],
         "sleeping": ["lying_down", "still"],
-        "drinking": ["drinking"],
-        "eating": ["eating"],
-
+        "drinking": ["drinking", "still"],
+        "eating": ["eating", "still"],
         "calling": ["standing", "still"],
         "clapping": ["arms_raised", "moving"],
         "fighting": ["moving", "fast_motion"],
         "hugging": ["standing", "still"],
         "laughing": ["standing", "still"],
         "listening_to_music": ["sitting", "still"],
-        "texting": ["sitting", "still"],
+        "texting": ["working", "sitting", "still"],
         "using_laptop": ["working", "sitting", "still"],
+
+        # Stanford40
+        "applauding": ["arms_raised", "moving"],
+        "blowing_bubbles": ["standing", "still"],
+        "brushing_teeth": ["standing", "still"],
+        "cleaning_the_floor": ["working", "moving"],
+        "climbing": ["exercising", "moving"],
+        "cooking": ["working", "standing", "still"],
+        "cutting_trees": ["working", "moving"],
+        "cutting_vegetables": ["working", "standing", "still"],
+        "feeding_a_horse": ["standing", "still"],
+        "fishing": ["standing", "still"],
+        "fixing_a_bike": ["working", "crouching", "still"],
+        "fixing_a_car": ["working", "crouching", "still"],
+        "gardening": ["working", "crouching", "moving"],
+        "holding_an_umbrella": ["standing", "still"],
+        "jumping": ["jumping", "moving", "fast_motion"],
+        "looking_through_a_microscope": ["working", "sitting", "still"],
+        "looking_through_a_telescope": ["standing", "still"],
+        "playing_guitar": ["playing", "sitting", "still"],
+        "playing_violin": ["playing", "standing", "still"],
+        "pouring_liquid": ["drinking", "standing", "still"],
+        "pushing_a_cart": ["walking", "moving"],
+        "reading": ["sitting", "still"],
+        "phoning": ["standing", "still"],
+        "riding_a_bike": ["cycling", "moving"],
+        "riding_a_horse": ["moving"],
+        "rowing_a_boat": ["exercising", "moving"],
+        "shooting_an_arrow": ["arms_raised", "standing", "still"],
+        "smoking": ["standing", "still"],
+        "taking_photos": ["standing", "still"],
+        "texting_message": ["working", "sitting", "still"],
+        "throwing_frisby": ["arms_raised", "moving"],
+        "using_a_computer": ["working", "sitting", "still"],
+        "walking_the_dog": ["walking", "moving"],
+        "washing_dishes": ["working", "standing", "still"],
+        "watching_tv": ["sitting", "still"],
+        "waving_hands": ["arms_raised", "moving"],
+        "writing_on_a_board": ["working", "standing", "still"],
+        "writing_on_a_book": ["working", "sitting", "still"],
+
+        # UCF101
+        "apply_eye_makeup": ["standing", "still"],
+        "apply_lipstick": ["standing", "still"],
+        "archery": ["arms_raised", "standing", "still"],
+        "baby_crawling": ["crouching", "moving"],
+        "balance_beam": ["walking", "moving"],
+        "band_marching": ["walking", "playing", "moving"],
+        "baseball_pitch": ["arms_raised", "moving", "fast_motion"],
+        "basketball": ["playing", "running", "moving"],
+        "basketball_dunk": ["jumping", "playing", "moving", "fast_motion"],
+        "bench_press": ["exercising", "lying_down", "moving"],
+        "biking": ["cycling", "moving"],
+        "billiards": ["playing", "standing", "still"],
+        "blow_dry_hair": ["standing", "still"],
+        "blowing_candles": ["standing", "still"],
+        "body_weight_squats": ["exercising", "crouching", "moving"],
+        "bowling": ["playing", "moving"],
+        "boxing_punching_bag": ["exercising", "moving", "fast_motion"],
+        "boxing_speed_bag": ["exercising", "moving", "fast_motion"],
+        "breast_stroke": ["exercising", "moving"],
+        "brushing_teeth": ["standing", "still"],
+        "clean_and_jerk": ["exercising", "arms_raised", "moving"],
+        "cliff_diving": ["jumping", "moving", "fast_motion"],
+        "cricket_bowling": ["arms_raised", "moving", "fast_motion"],
+        "cricket_shot": ["playing", "moving"],
+        "cutting_in_kitchen": ["working", "standing", "still"],
+        "diving": ["jumping", "moving", "fast_motion"],
+        "drumming": ["playing", "sitting", "moving"],
+        "fencing": ["exercising", "moving"],
+        "field_hockey_penalty": ["playing", "moving"],
+        "floor_gymnastics": ["exercising", "moving", "fast_motion"],
+        "frisbee_catch": ["arms_raised", "playing", "moving"],
+        "front_crawl": ["exercising", "moving"],
+        "golf_swing": ["playing", "moving"],
+        "haircut": ["standing", "still"],
+        "hammering": ["working", "moving"],
+        "hammer_throw": ["arms_raised", "exercising", "moving", "fast_motion"],
+        "handstand_pushups": ["exercising", "arms_raised", "moving"],
+        "handstand_walking": ["exercising", "moving"],
+        "head_massage": ["standing", "still"],
+        "high_jump": ["jumping", "exercising", "moving", "fast_motion"],
+        "horse_race": ["moving", "fast_motion"],
+        "horse_riding": ["moving"],
+        "hula_hoop": ["dancing", "moving"],
+        "ice_dancing": ["dancing", "moving"],
+        "javelin_throw": ["arms_raised", "moving", "fast_motion"],
+        "juggling_balls": ["playing", "standing", "moving"],
+        "jump_rope": ["jumping", "exercising", "moving", "fast_motion"],
+        "jumping_jack": ["jumping", "exercising", "moving", "fast_motion"],
+        "kayaking": ["exercising", "moving"],
+        "knitting": ["sitting", "still"],
+        "long_jump": ["jumping", "running", "moving", "fast_motion"],
+        "lunges": ["exercising", "walking", "moving"],
+        "military_parade": ["walking", "moving"],
+        "mixing": ["working", "standing", "still"],
+        "mopping_floor": ["working", "moving"],
+        "nunchucks": ["exercising", "moving", "fast_motion"],
+        "parallel_bars": ["exercising", "moving"],
+        "pizza_tossing": ["working", "standing", "moving"],
+        "playing_cello": ["playing", "sitting", "still"],
+        "playing_daf": ["playing", "sitting", "moving"],
+        "playing_dhol": ["playing", "standing", "moving"],
+        "playing_flute": ["playing", "standing", "still"],
+        "playing_guitar": ["playing", "sitting", "still"],
+        "playing_piano": ["playing", "sitting", "still"],
+        "playing_sitar": ["playing", "sitting", "still"],
+        "playing_tabla": ["playing", "sitting", "moving"],
+        "playing_violin": ["playing", "standing", "still"],
+        "pole_vault": ["jumping", "exercising", "moving", "fast_motion"],
+        "pommel_horse": ["exercising", "moving"],
+        "pull_ups": ["exercising", "moving"],
+        "punch": ["exercising", "moving", "fast_motion"],
+        "push_ups": ["exercising", "lying_down", "moving"],
+        "rafting": ["exercising", "moving"],
+        "rock_climbing_indoor": ["exercising", "moving"],
+        "rope_climbing": ["exercising", "moving"],
+        "rowing": ["exercising", "moving"],
+        "salsa_spin": ["dancing", "moving"],
+        "shaving_beard": ["standing", "still"],
+        "shotput": ["arms_raised", "exercising", "moving"],
+        "skate_boarding": ["moving"],
+        "skiing": ["moving", "fast_motion"],
+        "skijet": ["moving", "fast_motion"],
+        "sky_diving": ["falling", "moving", "fast_motion"],
+        "soccer_juggling": ["playing", "moving"],
+        "soccer_penalty": ["playing", "running", "moving"],
+        "still_rings": ["exercising", "moving"],
+        "sumo_wrestling": ["exercising", "moving"],
+        "surfing": ["moving"],
+        "swing": ["playing", "moving"],
+        "table_tennis_shot": ["playing", "moving"],
+        "tai_chi": ["exercising", "standing", "moving"],
+        "tennis_swing": ["playing", "moving"],
+        "throw_discus": ["arms_raised", "moving", "fast_motion"],
+        "trampoline_jumping": ["jumping", "moving", "fast_motion"],
+        "typing": ["working", "sitting", "still"],
+        "uneven_bars": ["exercising", "moving"],
+        "volleyball_spiking": ["jumping", "playing", "moving"],
+        "walking_with_dog": ["walking", "moving"],
+        "wall_pushups": ["exercising", "standing", "moving"],
+        "writing_on_board": ["working", "standing", "still"],
+        "yo_yo": ["playing", "standing", "still"],
     }
 
     return mapping.get(label_name, [])
@@ -583,6 +757,164 @@ def command_from_huggingface(args) -> None:
 
     print_dataset_summary(df)
 
+VIDEO_EXTENSIONS = [".avi", ".mp4", ".mov", ".mkv"]
+
+
+def normalize_action_name(value: str) -> str:
+    value = str(value).strip()
+
+    normalized = ""
+
+    for index, char in enumerate(value):
+        if char.isupper() and index > 0 and value[index - 1].islower():
+            normalized += "_"
+
+        normalized += char
+
+    return (
+        normalized
+        .lower()
+        .replace(" ", "_")
+        .replace("-", "_")
+        .replace("/", "_")
+    )
+
+
+def collect_videos(input_dir: Path) -> List[Path]:
+    video_paths = []
+
+    for extension in VIDEO_EXTENSIONS:
+        video_paths.extend(input_dir.rglob(f"*{extension}"))
+
+    return sorted(video_paths)
+
+
+def extract_frames_from_video(
+    video_path: Path,
+    output_dir: Path,
+    frames_per_video: int = 3,
+) -> List[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    capture = cv2.VideoCapture(str(video_path))
+
+    if not capture.isOpened():
+        print(f"Não foi possível abrir vídeo: {video_path}")
+        return []
+
+    frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if frame_count <= 0:
+        capture.release()
+        return []
+
+    if frames_per_video <= 1:
+        selected_indices = [frame_count // 2]
+    else:
+        selected_indices = [
+            int((i + 1) * frame_count / (frames_per_video + 1))
+            for i in range(frames_per_video)
+        ]
+
+    saved_paths = []
+
+    for frame_index in selected_indices:
+        capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+
+        success, frame = capture.read()
+
+        if not success or frame is None:
+            continue
+
+        output_path = output_dir / f"{video_path.stem}_frame_{frame_index:06d}.jpg"
+
+        cv2.imwrite(str(output_path), frame)
+        saved_paths.append(output_path)
+
+    capture.release()
+
+    return saved_paths
+
+
+def infer_ucf101_label_from_path(video_path: Path, input_dir: Path) -> str:
+    relative_path = video_path.relative_to(input_dir)
+
+    if len(relative_path.parts) < 2:
+        return ""
+
+    return normalize_action_name(relative_path.parts[0])
+
+
+def command_from_ucf101(args) -> None:
+    input_dir = Path(args.input_dir)
+    output_image_dir = Path(args.output_image_dir)
+    output_csv = Path(args.output_csv)
+
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Pasta UCF101 não encontrada: {input_dir}")
+
+    videos = collect_videos(input_dir)
+
+    if args.max_videos is not None:
+        videos = videos[:args.max_videos]
+
+    rows = []
+    skipped = 0
+
+    for video_path in videos:
+        source_label = infer_ucf101_label_from_path(
+            video_path=video_path,
+            input_dir=input_dir,
+        )
+
+        action_labels = map_hf_label_to_action(source_label)
+
+        if not action_labels:
+            skipped += 1
+            continue
+
+        video_output_dir = output_image_dir / source_label
+
+        frame_paths = extract_frames_from_video(
+            video_path=video_path,
+            output_dir=video_output_dir,
+            frames_per_video=args.frames_per_video,
+        )
+
+        for frame_path in frame_paths:
+            row = {
+                "frame_path": str(frame_path),
+                "source_dataset": "ucf101",
+                "source_label": source_label,
+                "source_video_path": str(video_path),
+            }
+
+            for label in LABELS:
+                row[label] = 0
+
+            for label in action_labels:
+                if label in LABELS:
+                    row[label] = 1
+
+            rows.append(row)
+
+    df = pd.DataFrame(rows)
+
+    df = clean_dataset(
+        df,
+        check_images=not args.no_check_images,
+    )
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+
+    print("\nDataset Actions criado a partir do UCF101:")
+    print(output_csv)
+    print("Vídeos encontrados:", len(videos))
+    print("Frames salvos:", len(df))
+    print("Vídeos/classes ignorados:", skipped)
+
+    print_dataset_summary(df)
 
 def main() -> None:
     parser = build_parser()
