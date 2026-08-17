@@ -11,6 +11,7 @@ from pipeline.video.scenes import detect_scene_changes
 
 from ai.spectra.predictor import SpectraPredictor
 from ai.spectra.Person.person_cropper import PersonCropper
+from pipeline.orchestration.action_postprocess import postprocess_temporal_actions
 try:
     from ai.spectra.Actions.person_action_analyzer import PersonActionAnalyzer
 except ImportError:
@@ -831,8 +832,111 @@ def analyze_frame_with_spectra(
         },
     }
 
+def apply_temporal_action_postprocess_to_scene(
+    scene_output: Dict[str, Any],
+) -> Dict[str, Any]:
+    raw_frame_results = scene_output.get("raw_frame_results", [])
 
+    action_frame_results = []
 
+    for frame_result in raw_frame_results:
+        raw = frame_result.get("raw", {})
+        action_result = raw.get("action")
+
+        if action_result:
+            action_frame_results.append(action_result)
+
+    if not action_frame_results:
+        return scene_output
+
+    temporal_action_result = postprocess_temporal_actions(action_frame_results)
+    temporal_predictions = temporal_action_result.get("predictions", [])
+
+    existing_labels = set(scene_output.get("labels", []))
+    confidence = scene_output.get("confidence", {})
+
+    for prediction in temporal_predictions:
+        label = prediction.get("label")
+        score = float(prediction.get("score", 0))
+
+        if not label:
+            continue
+
+        existing_labels.add(label)
+        confidence_key = f"action.{label}"
+        current_score = float(confidence.get(confidence_key, 0.0))
+
+        confidence[confidence_key] = round(
+            max(current_score, score),
+            4,
+        )
+
+    scene_output["labels"] = list(existing_labels)
+    scene_output["confidence"] = confidence
+    scene_output["temporal_action"] = temporal_action_result
+
+    return scene_output
+
+def select_frame_records_for_interval(
+    frame_records: List[Dict[str, Any]],
+    start_time: float,
+    end_time: float,
+    max_frames: int = 6,
+) -> List[Dict[str, Any]]:
+    """
+    Seleciona vários frames dentro de uma cena para permitir análise temporal.
+    """
+
+    candidates = [
+        record
+        for record in frame_records
+        if start_time <= record["timestamp"] <= end_time
+    ]
+
+    if not candidates:
+        selected = select_frame_for_interval(
+            frame_records=frame_records,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        return [selected] if selected is not None else []
+
+    if len(candidates) <= max_frames:
+        return candidates
+
+    if max_frames <= 1:
+        midpoint = (start_time + end_time) / 2
+
+        return [
+            min(
+                candidates,
+                key=lambda record: abs(record["timestamp"] - midpoint),
+            )
+        ]
+
+    selected_records = []
+
+    for index in range(max_frames):
+        target_position = round(
+            index * (len(candidates) - 1) / (max_frames - 1)
+        )
+
+        selected_records.append(candidates[target_position])
+
+    unique_records = []
+    seen_paths = set()
+
+    for record in selected_records:
+        frame_path = str(record["frame_path"])
+
+        if frame_path in seen_paths:
+            continue
+
+        seen_paths.add(frame_path)
+        unique_records.append(record)
+
+    return unique_records
 
 def build_spectra_outputs_for_scenes(
     frame_records: List[Dict[str, Any]],
@@ -847,33 +951,43 @@ def build_spectra_outputs_for_scenes(
     action_crops_output_dir: Optional[Path] = None,
     spectra_action_threshold: float = 0.3,
     spectra_top_k: int = 10,
+    max_temporal_frames_per_scene: int = 6,
 ) -> List[Dict[str, Any]]:
     pauses = extract_speech_pauses(whisper_result)
 
     spectra_outputs = []
 
     for interval in scene_intervals:
-        frame_record = select_frame_for_interval(
+        selected_frame_records = select_frame_records_for_interval(
             frame_records=frame_records,
             start_time=interval["start_time"],
             end_time=interval["end_time"],
+            max_frames=max_temporal_frames_per_scene,
         )
 
-        if frame_record is None:
+        if not selected_frame_records:
             continue
 
-        spectra_frame_result = analyze_frame_with_spectra(
-            frame_path=frame_record["frame_path"],
-            predictors=predictors,
-            use_person_model_on_full_frame=use_person_model_on_full_frame,
-            use_object_model_on_full_frame=use_object_model_on_full_frame,
-            person_cropper=person_cropper,
-            person_crops_output_dir=person_crops_output_dir,
-            action_analyzer=action_analyzer,
-            action_crops_output_dir=action_crops_output_dir,
-            spectra_action_threshold=spectra_action_threshold,
-            spectra_top_k=spectra_top_k,
-        )
+        raw_frame_results = []
+
+        for frame_record in selected_frame_records:
+            spectra_frame_result = analyze_frame_with_spectra(
+                frame_path=frame_record["frame_path"],
+                predictors=predictors,
+                use_person_model_on_full_frame=use_person_model_on_full_frame,
+                use_object_model_on_full_frame=use_object_model_on_full_frame,
+                person_cropper=person_cropper,
+                person_crops_output_dir=person_crops_output_dir,
+                action_analyzer=action_analyzer,
+                action_crops_output_dir=action_crops_output_dir,
+                spectra_action_threshold=spectra_action_threshold,
+                spectra_top_k=spectra_top_k,
+            )
+
+            spectra_frame_result["timestamp"] = frame_record["timestamp"]
+            raw_frame_results.append(spectra_frame_result)
+
+        main_frame_result = raw_frame_results[len(raw_frame_results) // 2]
 
         best_pause = find_best_pause_for_interval(
             pauses=pauses,
@@ -881,29 +995,34 @@ def build_spectra_outputs_for_scenes(
             end_time=interval["end_time"],
         )
 
-        context = dict(spectra_frame_result["context"])
-        context["frame_path"] = spectra_frame_result["frame_path"]
+        context = dict(main_frame_result["context"])
+        context["frame_path"] = main_frame_result["frame_path"]
         context["scene_index"] = interval["scene_index"]
-        context["selected_frame_timestamp"] = frame_record["timestamp"]
-        context["raw_outputs"] = spectra_frame_result.get("raw", {})
+        context["selected_frame_timestamp"] = main_frame_result["timestamp"]
+        context["temporal_frame_count"] = len(raw_frame_results)
+        context["temporal_frame_paths"] = [
+            frame_result["frame_path"]
+            for frame_result in raw_frame_results
+        ]
+        context["raw_outputs"] = main_frame_result.get("raw", {})
 
         if best_pause:
             context["suggested_pause"] = best_pause
 
-        spectra_outputs.append(
-            {
-                "start_time": interval["start_time"],
-                "end_time": interval["end_time"],
-                "labels": spectra_frame_result["labels"],
-                "confidence": spectra_frame_result["confidence"],
-                "context": context,
-            }
-        )
+        scene_output = {
+            "start_time": interval["start_time"],
+            "end_time": interval["end_time"],
+            "labels": main_frame_result["labels"],
+            "confidence": main_frame_result["confidence"],
+            "context": context,
+            "raw_frame_results": raw_frame_results,
+        }
+
+        scene_output = apply_temporal_action_postprocess_to_scene(scene_output)
+
+        spectra_outputs.append(scene_output)
 
     return spectra_outputs
-
-
-
 
 # ============================================================
 # Narrative
@@ -1054,6 +1173,7 @@ def process_video(
     spectra_object_threshold: float = 0.50,
     spectra_action_threshold: float = 0.30,
     spectra_top_k: int = 12,
+    max_temporal_frames_per_scene: int = 6,
     strict_model_loading: bool = False,
 
     use_person_model_on_full_frame: bool = False,
@@ -1197,6 +1317,7 @@ def process_video(
                 action_crops_output_dir=output_dirs["action_crops_dir"],
                 spectra_action_threshold=spectra_action_threshold,
                 spectra_top_k=spectra_top_k,
+                max_temporal_frames_per_scene=max_temporal_frames_per_scene,
             )
 
     narrative_timeline: List[Dict[str, Any]] = []

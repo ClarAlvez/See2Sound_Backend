@@ -95,6 +95,7 @@ class ActionPredictor:
         )
 
         predictions = self._apply_action_consistency_rules(predictions)
+        predictions = self._clean_action_predictions(predictions)
 
         if limit is not None:
             predictions = predictions[:limit]
@@ -127,6 +128,81 @@ class ActionPredictor:
             top_k=top_k,
             group_by_category=False,
         )
+
+    def _clean_action_predictions(self, predictions):
+        """
+        Remove falsos positivos comuns e adiciona labels derivadas simples.
+        """
+
+        if not predictions:
+            return []
+
+        by_label = {
+            item["label"]: float(item["score"])
+            for item in predictions
+        }
+
+        cleaned = []
+
+        for item in predictions:
+            label = item["label"]
+            score = float(item["score"])
+
+            # arms_raised confunde muito com corrida, dança, exercício e salto.
+            # Só mantém se estiver bem confiante.
+            if label == "arms_raised" and score < 0.65:
+                continue
+
+            # jumping também pode aparecer em frames de corrida.
+            # Mantém apenas se estiver mais confiante.
+            if label == "jumping" and score < 0.75:
+                continue
+
+            if label == "standing" and (
+                "moving" in by_label
+                or "fast_motion" in by_label
+                or "jumping" in by_label
+            ):
+                if score < 0.50:
+                    continue
+
+            cleaned.append(
+                {
+                    "label": label,
+                    "score": round(score, 4),
+                }
+            )
+
+        cleaned_labels = {item["label"] for item in cleaned}
+
+        moving_score = by_label.get("moving", 0.0)
+        exercise_score = by_label.get("exercising", 0.0)
+        fast_motion_score = by_label.get("fast_motion", 0.0)
+
+        # Regra derivada para corrida.
+        # Não força running só por "moving", precisa ter exercício ou movimento rápido.
+        if "running" not in cleaned_labels:
+            if moving_score >= 0.65 and exercise_score >= 0.30:
+                cleaned.append(
+                    {
+                        "label": "running",
+                        "score": round(min(moving_score, max(exercise_score, 0.30)), 4),
+                    }
+                )
+            elif moving_score >= 0.70 and fast_motion_score >= 0.30:
+                cleaned.append(
+                    {
+                        "label": "running",
+                        "score": round(min(moving_score, max(fast_motion_score, 0.30)), 4),
+                    }
+                )
+
+        cleaned.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+
+        return cleaned
 
     def _apply_action_consistency_rules(
         self,
