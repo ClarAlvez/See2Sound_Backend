@@ -3,19 +3,15 @@ from pipeline.orchestration.process_video import process_video
 
 VIDEO_PATH = "data/raw_videos/video_teste.mp4"
 
-SCENE_MODEL_PATH = "data/models/scene_net_best.pt"
+SCENE_MODEL_PATH = "data/models/Scene/scene_net_best.pt"
 
 PERSON_MODEL_PATH = "data/models/Person/person_net_best.pt"
 
-ACTION_MODEL_PATH = (
-    "data/models/Actions_v2_full_finetuned/"
-    "Actions_v2_full_finetuned/"
-    "action_net_best.pt"
-)
+ACTION_MODEL_PATH = "data/models/Actions/action_net_best.pt"
+
 
 NARRATIVE_MODEL_PATH = (
-    "data/external/llama/"
-    "Llama-3.2-1B-Instruct-Q6_K_L.gguf"
+    "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf"
 )
 
 

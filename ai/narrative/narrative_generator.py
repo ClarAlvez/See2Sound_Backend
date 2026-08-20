@@ -39,7 +39,7 @@ class LLMNarrativeGenerator:
         self,
         model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
         similarity_threshold: float = 0.75,
-        n_ctx: int = 2048,
+        n_ctx: int = 4096,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
     ):
@@ -48,8 +48,8 @@ class LLMNarrativeGenerator:
             n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
-            temperature=0.55,
-            top_p=0.9,
+            temperature=0.15,
+            top_p=0.8,
             max_tokens=80,
             verbose=False,
         )
