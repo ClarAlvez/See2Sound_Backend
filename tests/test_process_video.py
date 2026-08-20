@@ -4,10 +4,10 @@ result = process_video(
     video_path="data/raw_videos/video_teste.mp4",
     output_base_dir="data/output",
 
-    scene_model_path="data/models/Scene/scene_net_best.pt",
-    person_model_path="data/models/Person_v2_age/person_net_best.pt",
+    scene_model_path="data/models/scene_net_best.pt",
+    person_model_path="data/models/Person/person_net_best.pt",
     object_model_path=None,
-    action_model_path="data/models/Actions_v2_full_finetuned/action_net_best.pt",
+    action_model_path="data/models/Actions_v2_full_finetuned/Actions_v2_full_finetuned/action_net_best.pt",
 
     run_spectra=True,
     run_narrative=False,

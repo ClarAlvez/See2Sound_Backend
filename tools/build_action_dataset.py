@@ -153,14 +153,20 @@ def infer_labels_from_folder(
 
     valid_labels = []
 
-    for label in raw_labels:
-        if label not in LABELS:
-            print(f"Label ignorada por não existir em Actions.labels: {label}")
+    for raw_label in raw_labels:
+        normalized_label = normalize_action_name(raw_label)
+
+        if normalized_label in LABELS:
+            valid_labels.append(normalized_label)
             continue
 
-        valid_labels.append(label)
+        mapped_labels = map_hf_label_to_action(normalized_label)
 
-    return valid_labels
+        for mapped_label in mapped_labels:
+            if mapped_label in LABELS:
+                valid_labels.append(mapped_label)
+
+    return sorted(set(valid_labels))
 
 
 def collect_images(input_dir: Path) -> List[Path]:
@@ -451,6 +457,26 @@ def build_parser() -> argparse.ArgumentParser:
     sample_parser.add_argument("--no-check-images", action="store_true")
     sample_parser.set_defaults(func=command_sample)
 
+    statefarm_parser = subparsers.add_parser("from-statefarm")
+    statefarm_parser.add_argument(
+        "--input-dir",
+        default="data/external/actions/state_farm/train",
+    )
+    statefarm_parser.add_argument(
+        "--output-csv",
+        default="data/datasets/Actions/action_statefarm_labels.csv",
+    )
+    statefarm_parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+    )
+    statefarm_parser.add_argument(
+        "--no-check-images",
+        action="store_true",
+    )
+    statefarm_parser.set_defaults(func=command_from_statefarm)
+
     hf_parser = subparsers.add_parser("from-huggingface")
     hf_parser.add_argument(
         "--dataset-name",
@@ -510,7 +536,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
 def map_hf_label_to_action(label_name: str) -> List[str]:
     label_name = normalize_action_name(label_name)
 
@@ -524,26 +549,26 @@ def map_hf_label_to_action(label_name: str) -> List[str]:
         "sleeping": ["lying_down", "still"],
         "drinking": ["drinking", "still"],
         "eating": ["eating", "still"],
-        "calling": ["standing", "still"],
+        "calling": ["phone_use", "talking", "standing", "still"],
         "clapping": ["arms_raised", "moving"],
-        "fighting": ["moving", "fast_motion"],
+        "fighting": ["martial_activity", "sports", "moving", "fast_motion"],
         "hugging": ["standing", "still"],
-        "laughing": ["standing", "still"],
+        "laughing": ["talking", "standing", "still"],
         "listening_to_music": ["sitting", "still"],
-        "texting": ["working", "sitting", "still"],
-        "using_laptop": ["working", "sitting", "still"],
+        "texting": ["phone_use", "working", "sitting", "still"],
+        "using_laptop": ["computer_use", "working", "sitting", "still"],
 
         # Stanford40
         "applauding": ["arms_raised", "moving"],
         "blowing_bubbles": ["standing", "still"],
-        "brushing_teeth": ["standing", "still"],
-        "cleaning_the_floor": ["working", "moving"],
-        "climbing": ["exercising", "moving"],
-        "cooking": ["working", "standing", "still"],
+        "brushing_teeth": ["grooming", "standing", "still"],
+        "cleaning_the_floor": ["cleaning", "working", "moving"],
+        "climbing": ["climbing", "exercising", "moving"],
+        "cooking": ["cooking", "working", "standing", "still"],
         "cutting_trees": ["working", "moving"],
-        "cutting_vegetables": ["working", "standing", "still"],
+        "cutting_vegetables": ["cooking", "working", "standing", "still"],
         "feeding_a_horse": ["standing", "still"],
-        "fishing": ["standing", "still"],
+        "fishing": ["sports", "standing", "still"],
         "fixing_a_bike": ["working", "crouching", "still"],
         "fixing_a_car": ["working", "crouching", "still"],
         "gardening": ["working", "crouching", "moving"],
@@ -551,129 +576,129 @@ def map_hf_label_to_action(label_name: str) -> List[str]:
         "jumping": ["jumping", "moving", "fast_motion"],
         "looking_through_a_microscope": ["working", "sitting", "still"],
         "looking_through_a_telescope": ["standing", "still"],
-        "playing_guitar": ["playing", "sitting", "still"],
-        "playing_violin": ["playing", "standing", "still"],
+        "playing_guitar": ["instrument_playing", "playing", "sitting", "still"],
+        "playing_violin": ["instrument_playing", "playing", "standing", "still"],
         "pouring_liquid": ["drinking", "standing", "still"],
-        "pushing_a_cart": ["walking", "moving"],
-        "reading": ["sitting", "still"],
-        "phoning": ["standing", "still"],
-        "riding_a_bike": ["cycling", "moving"],
-        "riding_a_horse": ["moving"],
-        "rowing_a_boat": ["exercising", "moving"],
-        "shooting_an_arrow": ["arms_raised", "standing", "still"],
+        "pushing_a_cart": ["carrying", "walking", "moving"],
+        "reading": ["reading", "sitting", "still"],
+        "phoning": ["phone_use", "talking", "standing", "still"],
+        "riding_a_bike": ["cycling", "sports", "moving"],
+        "riding_a_horse": ["sports", "moving"],
+        "rowing_a_boat": ["water_activity", "sports", "exercising", "moving"],
+        "shooting_an_arrow": ["sports", "arms_raised", "standing", "still"],
         "smoking": ["standing", "still"],
         "taking_photos": ["standing", "still"],
-        "texting_message": ["working", "sitting", "still"],
-        "throwing_frisby": ["arms_raised", "moving"],
-        "using_a_computer": ["working", "sitting", "still"],
+        "texting_message": ["phone_use", "working", "sitting", "still"],
+        "throwing_frisby": ["throwing", "sports", "arms_raised", "moving"],
+        "using_a_computer": ["computer_use", "working", "sitting", "still"],
         "walking_the_dog": ["walking", "moving"],
-        "washing_dishes": ["working", "standing", "still"],
+        "washing_dishes": ["cleaning", "working", "standing", "still"],
         "watching_tv": ["sitting", "still"],
         "waving_hands": ["arms_raised", "moving"],
-        "writing_on_a_board": ["working", "standing", "still"],
-        "writing_on_a_book": ["working", "sitting", "still"],
+        "writing_on_a_board": ["writing", "working", "standing", "still"],
+        "writing_on_a_book": ["writing", "working", "sitting", "still"],
 
         # UCF101
-        "apply_eye_makeup": ["standing", "still"],
-        "apply_lipstick": ["standing", "still"],
-        "archery": ["arms_raised", "standing", "still"],
+        "apply_eye_makeup": ["makeup", "grooming", "standing", "still"],
+        "apply_lipstick": ["makeup", "grooming", "standing", "still"],
+        "archery": ["sports", "arms_raised", "standing", "still"],
         "baby_crawling": ["crouching", "moving"],
-        "balance_beam": ["walking", "moving"],
-        "band_marching": ["walking", "playing", "moving"],
-        "baseball_pitch": ["arms_raised", "moving", "fast_motion"],
-        "basketball": ["playing", "running", "moving"],
-        "basketball_dunk": ["jumping", "playing", "moving", "fast_motion"],
-        "bench_press": ["exercising", "lying_down", "moving"],
-        "biking": ["cycling", "moving"],
-        "billiards": ["playing", "standing", "still"],
-        "blow_dry_hair": ["standing", "still"],
+        "balance_beam": ["sports", "walking", "moving"],
+        "band_marching": ["instrument_playing", "walking", "playing", "moving"],
+        "baseball_pitch": ["sports", "ball_sport", "throwing", "arms_raised", "moving", "fast_motion"],
+        "basketball": ["sports", "ball_sport", "playing", "running", "moving"],
+        "basketball_dunk": ["sports", "ball_sport", "jumping", "playing", "moving", "fast_motion"],
+        "bench_press": ["sports", "exercising", "lying_down", "moving"],
+        "biking": ["cycling", "sports", "moving"],
+        "billiards": ["sports", "ball_sport", "playing", "standing", "still"],
+        "blow_dry_hair": ["grooming", "standing", "still"],
         "blowing_candles": ["standing", "still"],
-        "body_weight_squats": ["exercising", "crouching", "moving"],
-        "bowling": ["playing", "moving"],
-        "boxing_punching_bag": ["exercising", "moving", "fast_motion"],
-        "boxing_speed_bag": ["exercising", "moving", "fast_motion"],
-        "breast_stroke": ["exercising", "moving"],
-        "brushing_teeth": ["standing", "still"],
-        "clean_and_jerk": ["exercising", "arms_raised", "moving"],
-        "cliff_diving": ["jumping", "moving", "fast_motion"],
-        "cricket_bowling": ["arms_raised", "moving", "fast_motion"],
-        "cricket_shot": ["playing", "moving"],
-        "cutting_in_kitchen": ["working", "standing", "still"],
-        "diving": ["jumping", "moving", "fast_motion"],
-        "drumming": ["playing", "sitting", "moving"],
-        "fencing": ["exercising", "moving"],
-        "field_hockey_penalty": ["playing", "moving"],
-        "floor_gymnastics": ["exercising", "moving", "fast_motion"],
-        "frisbee_catch": ["arms_raised", "playing", "moving"],
-        "front_crawl": ["exercising", "moving"],
-        "golf_swing": ["playing", "moving"],
-        "haircut": ["standing", "still"],
+        "body_weight_squats": ["sports", "exercising", "crouching", "moving"],
+        "bowling": ["sports", "ball_sport", "playing", "throwing", "moving"],
+        "boxing_punching_bag": ["sports", "martial_activity", "exercising", "moving", "fast_motion"],
+        "boxing_speed_bag": ["sports", "martial_activity", "exercising", "moving", "fast_motion"],
+        "breast_stroke": ["swimming", "water_activity", "sports", "exercising", "moving"],
+        "brushing_teeth": ["grooming", "standing", "still"],
+        "clean_and_jerk": ["sports", "exercising", "arms_raised", "moving"],
+        "cliff_diving": ["water_activity", "sports", "jumping", "falling", "moving", "fast_motion"],
+        "cricket_bowling": ["sports", "ball_sport", "throwing", "arms_raised", "moving", "fast_motion"],
+        "cricket_shot": ["sports", "ball_sport", "playing", "moving"],
+        "cutting_in_kitchen": ["cooking", "working", "standing", "still"],
+        "diving": ["water_activity", "sports", "jumping", "falling", "moving", "fast_motion"],
+        "drumming": ["instrument_playing", "playing", "sitting", "moving"],
+        "fencing": ["sports", "martial_activity", "exercising", "moving"],
+        "field_hockey_penalty": ["sports", "ball_sport", "playing", "moving"],
+        "floor_gymnastics": ["sports", "exercising", "moving", "fast_motion"],
+        "frisbee_catch": ["sports", "ball_sport", "throwing", "arms_raised", "playing", "moving"],
+        "front_crawl": ["swimming", "water_activity", "sports", "exercising", "moving"],
+        "golf_swing": ["sports", "ball_sport", "playing", "moving"],
+        "haircut": ["grooming", "standing", "still"],
         "hammering": ["working", "moving"],
-        "hammer_throw": ["arms_raised", "exercising", "moving", "fast_motion"],
-        "handstand_pushups": ["exercising", "arms_raised", "moving"],
-        "handstand_walking": ["exercising", "moving"],
-        "head_massage": ["standing", "still"],
-        "high_jump": ["jumping", "exercising", "moving", "fast_motion"],
-        "horse_race": ["moving", "fast_motion"],
-        "horse_riding": ["moving"],
-        "hula_hoop": ["dancing", "moving"],
-        "ice_dancing": ["dancing", "moving"],
-        "javelin_throw": ["arms_raised", "moving", "fast_motion"],
-        "juggling_balls": ["playing", "standing", "moving"],
-        "jump_rope": ["jumping", "exercising", "moving", "fast_motion"],
-        "jumping_jack": ["jumping", "exercising", "moving", "fast_motion"],
-        "kayaking": ["exercising", "moving"],
-        "knitting": ["sitting", "still"],
-        "long_jump": ["jumping", "running", "moving", "fast_motion"],
-        "lunges": ["exercising", "walking", "moving"],
+        "hammer_throw": ["sports", "throwing", "arms_raised", "exercising", "moving", "fast_motion"],
+        "handstand_pushups": ["sports", "exercising", "arms_raised", "moving"],
+        "handstand_walking": ["sports", "exercising", "moving"],
+        "head_massage": ["grooming", "standing", "still"],
+        "high_jump": ["sports", "jumping", "exercising", "moving", "fast_motion"],
+        "horse_race": ["sports", "moving", "fast_motion"],
+        "horse_riding": ["sports", "moving"],
+        "hula_hoop": ["dancing", "exercising", "moving"],
+        "ice_dancing": ["dancing", "sports", "moving"],
+        "javelin_throw": ["sports", "throwing", "arms_raised", "moving", "fast_motion"],
+        "juggling_balls": ["sports", "ball_sport", "playing", "standing", "moving"],
+        "jump_rope": ["sports", "jumping", "exercising", "moving", "fast_motion"],
+        "jumping_jack": ["sports", "jumping", "exercising", "moving", "fast_motion"],
+        "kayaking": ["water_activity", "sports", "exercising", "moving"],
+        "knitting": ["working", "sitting", "still"],
+        "long_jump": ["sports", "jumping", "running", "moving", "fast_motion"],
+        "lunges": ["sports", "exercising", "walking", "moving"],
         "military_parade": ["walking", "moving"],
-        "mixing": ["working", "standing", "still"],
-        "mopping_floor": ["working", "moving"],
-        "nunchucks": ["exercising", "moving", "fast_motion"],
-        "parallel_bars": ["exercising", "moving"],
-        "pizza_tossing": ["working", "standing", "moving"],
-        "playing_cello": ["playing", "sitting", "still"],
-        "playing_daf": ["playing", "sitting", "moving"],
-        "playing_dhol": ["playing", "standing", "moving"],
-        "playing_flute": ["playing", "standing", "still"],
-        "playing_guitar": ["playing", "sitting", "still"],
-        "playing_piano": ["playing", "sitting", "still"],
-        "playing_sitar": ["playing", "sitting", "still"],
-        "playing_tabla": ["playing", "sitting", "moving"],
-        "playing_violin": ["playing", "standing", "still"],
-        "pole_vault": ["jumping", "exercising", "moving", "fast_motion"],
-        "pommel_horse": ["exercising", "moving"],
-        "pull_ups": ["exercising", "moving"],
-        "punch": ["exercising", "moving", "fast_motion"],
-        "push_ups": ["exercising", "lying_down", "moving"],
-        "rafting": ["exercising", "moving"],
-        "rock_climbing_indoor": ["exercising", "moving"],
-        "rope_climbing": ["exercising", "moving"],
-        "rowing": ["exercising", "moving"],
+        "mixing": ["cooking", "working", "standing", "still"],
+        "mopping_floor": ["cleaning", "working", "moving"],
+        "nunchucks": ["sports", "martial_activity", "exercising", "moving", "fast_motion"],
+        "parallel_bars": ["sports", "exercising", "moving"],
+        "pizza_tossing": ["cooking", "working", "standing", "moving"],
+        "playing_cello": ["instrument_playing", "playing", "sitting", "still"],
+        "playing_daf": ["instrument_playing", "playing", "sitting", "moving"],
+        "playing_dhol": ["instrument_playing", "playing", "standing", "moving"],
+        "playing_flute": ["instrument_playing", "playing", "standing", "still"],
+        "playing_guitar": ["instrument_playing", "playing", "sitting", "still"],
+        "playing_piano": ["instrument_playing", "playing", "sitting", "still"],
+        "playing_sitar": ["instrument_playing", "playing", "sitting", "still"],
+        "playing_tabla": ["instrument_playing", "playing", "sitting", "moving"],
+        "playing_violin": ["instrument_playing", "playing", "standing", "still"],
+        "pole_vault": ["sports", "jumping", "exercising", "moving", "fast_motion"],
+        "pommel_horse": ["sports", "exercising", "moving"],
+        "pull_ups": ["sports", "exercising", "moving"],
+        "punch": ["sports", "martial_activity", "exercising", "moving", "fast_motion"],
+        "push_ups": ["sports", "exercising", "lying_down", "moving"],
+        "rafting": ["water_activity", "sports", "exercising", "moving"],
+        "rock_climbing_indoor": ["climbing", "sports", "exercising", "moving"],
+        "rope_climbing": ["climbing", "sports", "exercising", "moving"],
+        "rowing": ["water_activity", "sports", "exercising", "moving"],
         "salsa_spin": ["dancing", "moving"],
-        "shaving_beard": ["standing", "still"],
-        "shotput": ["arms_raised", "exercising", "moving"],
-        "skate_boarding": ["moving"],
-        "skiing": ["moving", "fast_motion"],
-        "skijet": ["moving", "fast_motion"],
-        "sky_diving": ["falling", "moving", "fast_motion"],
-        "soccer_juggling": ["playing", "moving"],
-        "soccer_penalty": ["playing", "running", "moving"],
-        "still_rings": ["exercising", "moving"],
-        "sumo_wrestling": ["exercising", "moving"],
-        "surfing": ["moving"],
+        "shaving_beard": ["grooming", "standing", "still"],
+        "shotput": ["sports", "throwing", "arms_raised", "exercising", "moving"],
+        "skate_boarding": ["sports", "moving"],
+        "skiing": ["sports", "moving", "fast_motion"],
+        "skijet": ["water_activity", "sports", "moving", "fast_motion"],
+        "sky_diving": ["sports", "falling", "moving", "fast_motion"],
+        "soccer_juggling": ["sports", "ball_sport", "playing", "moving"],
+        "soccer_penalty": ["sports", "ball_sport", "playing", "running", "moving"],
+        "still_rings": ["sports", "exercising", "moving"],
+        "sumo_wrestling": ["sports", "martial_activity", "exercising", "moving"],
+        "surfing": ["water_activity", "sports", "moving"],
         "swing": ["playing", "moving"],
-        "table_tennis_shot": ["playing", "moving"],
-        "tai_chi": ["exercising", "standing", "moving"],
-        "tennis_swing": ["playing", "moving"],
-        "throw_discus": ["arms_raised", "moving", "fast_motion"],
-        "trampoline_jumping": ["jumping", "moving", "fast_motion"],
-        "typing": ["working", "sitting", "still"],
-        "uneven_bars": ["exercising", "moving"],
-        "volleyball_spiking": ["jumping", "playing", "moving"],
+        "table_tennis_shot": ["sports", "racket_sport", "ball_sport", "playing", "moving"],
+        "tai_chi": ["sports", "martial_activity", "exercising", "standing", "moving"],
+        "tennis_swing": ["sports", "racket_sport", "ball_sport", "playing", "moving"],
+        "throw_discus": ["sports", "throwing", "arms_raised", "moving", "fast_motion"],
+        "trampoline_jumping": ["sports", "jumping", "moving", "fast_motion"],
+        "typing": ["computer_use", "working", "sitting", "still"],
+        "uneven_bars": ["sports", "exercising", "moving"],
+        "volleyball_spiking": ["sports", "ball_sport", "jumping", "playing", "moving"],
         "walking_with_dog": ["walking", "moving"],
-        "wall_pushups": ["exercising", "standing", "moving"],
-        "writing_on_board": ["working", "standing", "still"],
+        "wall_pushups": ["sports", "exercising", "standing", "moving"],
+        "writing_on_board": ["writing", "working", "standing", "still"],
         "yo_yo": ["playing", "standing", "still"],
     }
 
@@ -913,6 +938,92 @@ def command_from_ucf101(args) -> None:
     print("Vídeos encontrados:", len(videos))
     print("Frames salvos:", len(df))
     print("Vídeos/classes ignorados:", skipped)
+
+    print_dataset_summary(df)
+
+def map_statefarm_label_to_action(label_name: str) -> List[str]:
+    label_name = normalize_action_name(label_name)
+
+    mapping = {
+        "c0": ["driving", "sitting", "still"],
+        "c1": ["driving", "phone_use", "sitting"],
+        "c2": ["driving", "phone_use", "talking", "sitting"],
+        "c3": ["driving", "phone_use", "sitting"],
+        "c4": ["driving", "phone_use", "talking", "sitting"],
+        "c5": ["driving", "radio_use", "working", "sitting"],
+        "c6": ["driving", "drinking", "sitting"],
+        "c7": ["driving", "reaching", "arms_raised", "sitting"],
+        "c8": ["driving", "makeup", "grooming", "sitting"],
+        "c9": ["driving", "talking", "sitting"],
+    }
+
+    return mapping.get(label_name, [])
+
+
+def command_from_statefarm(args) -> None:
+    input_dir = Path(args.input_dir)
+    output_csv = Path(args.output_csv)
+
+    if not input_dir.exists():
+        raise FileNotFoundError(f"Pasta State Farm não encontrada: {input_dir}")
+
+    image_paths = collect_images(input_dir)
+
+    rows = []
+    skipped = 0
+
+    if args.max_rows is not None:
+        image_paths = image_paths[:args.max_rows]
+
+    for image_path in image_paths:
+        relative_path = image_path.relative_to(input_dir)
+
+        if len(relative_path.parts) < 2:
+            skipped += 1
+            continue
+
+        source_label = normalize_action_name(relative_path.parts[0])
+        action_labels = map_statefarm_label_to_action(source_label)
+
+        if not action_labels:
+            skipped += 1
+            continue
+
+        row = {
+            "frame_path": str(image_path),
+            "source_dataset": "state_farm_distracted_driver",
+            "source_label": source_label,
+        }
+
+        for label in LABELS:
+            row[label] = 0
+
+        for label in action_labels:
+            if label in LABELS:
+                row[label] = 1
+
+        rows.append(row)
+
+    if not rows:
+        raise ValueError(
+            "Dataset State Farm vazio. Confira se a pasta possui train/c0, train/c1, ..., train/c9."
+        )
+
+    df = pd.DataFrame(rows)
+
+    df = clean_dataset(
+        df,
+        check_images=not args.no_check_images,
+    )
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+
+    print("\nDataset Actions criado a partir do State Farm:")
+    print(output_csv)
+    print("Imagens encontradas:", len(image_paths))
+    print("Linhas salvas:", len(df))
+    print("Ignoradas:", skipped)
 
     print_dataset_summary(df)
 
