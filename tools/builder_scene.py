@@ -140,14 +140,12 @@ CATEGORY_RULES: Dict[str, List[str]] = {
     "living_room": ["living_room", "room", "indoor"],
     "kitchen": ["kitchen", "room", "indoor"],
     "bathroom": ["room", "indoor"],
-    "dining_room": ["restaurant", "room", "indoor"],
 
     "office": ["office_room", "room", "indoor"],
     "office_cubicles": ["office_cubicles", "room", "indoor"],
     "home_office": ["home_office", "room", "indoor"],
     "conference_room": ["conference_room", "room", "indoor"],
-    "conference_room": ["office", "room", "indoor"],
-    "cubicle": ["office", "room", "indoor"],
+    "cubicle": ["office_cubicles", "room", "indoor"],
 
     "classroom": ["classroom", "school", "room", "indoor"],
     "school": ["school", "indoor"],
@@ -158,9 +156,9 @@ CATEGORY_RULES: Dict[str, List[str]] = {
     "cafeteria": ["cafeteria", "room", "indoor"],
     "dining_room": ["dining_room", "room", "indoor"],
     "restaurant_patio": ["restaurant_patio", "outdoor"],
-    "cafeteria": ["restaurant", "room", "indoor"],
-    "bar": ["restaurant", "room", "indoor"],
-    "coffee_shop": ["restaurant", "store", "indoor"],
+    "cafeteria": ["cafeteria", "room", "indoor"],
+    "bar": ["restaurant_indoor", "room", "indoor"],
+    "coffee_shop": ["cafeteria", "store", "indoor"],
 
     "store": ["store", "indoor"],
     "shop": ["store", "indoor"],
@@ -185,10 +183,96 @@ CATEGORY_RULES: Dict[str, List[str]] = {
     "sunny": ["day", "bright_place"],
     "bright": ["bright_place"],
     "day": ["day", "bright_place"],
+
+    # ============================================================
+    # MIT Indoor 67 / indoor específico
+    # ============================================================
+
+    "mit_office": ["office_room", "room", "indoor"],
+    "computer_room": ["office_room", "room", "indoor"],
+    "meeting_room": ["conference_room", "room", "indoor"],
+    "conference_room": ["conference_room", "room", "indoor"],
+
+    "livingroom": ["living_room", "room", "indoor"],
+    "living_room": ["living_room", "room", "indoor"],
+
+    "restaurant_indoor": ["restaurant_indoor", "room", "indoor"],
+    "fastfood_restaurant": ["fastfood_restaurant", "room", "indoor"],
+    "cafeteria": ["cafeteria", "room", "indoor"],
+    "dining_room": ["dining_room", "room", "indoor"],
+    "restaurant_kitchen": ["kitchen", "room", "indoor"],
+
+    "hospitalroom": ["hospital", "room", "indoor"],
+    "dentaloffice": ["hospital", "room", "indoor"],
+    "operating_room": ["hospital", "room", "indoor"],
+
+    "bookstore": ["store", "room", "indoor"],
+    "clothingstore": ["store", "room", "indoor"],
+    "grocerystore": ["store", "room", "indoor"],
+    "shoeshop": ["store", "room", "indoor"],
+    "florist": ["store", "room", "indoor"],
+    "videostore": ["store", "room", "indoor"],
+    "jewelleryshop": ["store", "room", "indoor"],
+}
+
+MIT_INDOOR67_CATEGORY_ALIASES = {
+    # Escritório / trabalho
+    "office": "mit_office",
+    "meeting_room": "conference_room",
+    "computerroom": "computer_room",
+
+    # Casa / cômodos
+    "bedroom": "bedroom",
+    "kitchen": "kitchen",
+    "livingroom": "living_room",
+    "dining_room": "dining_room",
+    "bathroom": "bathroom",
+    "children_room": "bedroom",
+
+    # Escola / estudo
+    "classroom": "classroom",
+    "library": "library",
+    "kindergarden": "classroom",
+
+    # Restaurante / comida
+    "restaurant": "restaurant_indoor",
+    "fastfood_restaurant": "fastfood_restaurant",
+    "restaurant_kitchen": "restaurant_kitchen",
+    "buffet": "cafeteria",
+    "cafeteria": "cafeteria",
+    "bar": "bar",
+    "bakery": "store",
+
+    # Loja / comércio
+    "bookstore": "store",
+    "clothingstore": "store",
+    "grocerystore": "store",
+    "shoeshop": "store",
+    "florist": "store",
+    "videostore": "store",
+    "jewelleryshop": "store",
+    "mall": "store",
+
+    # Hospital / saúde
+    "hospitalroom": "hospital",
+    "operating_room": "hospital",
+    "dentaloffice": "hospital",
+    "waitingroom": "room",
+
+    # Outros interiores úteis
+    "corridor": "room",
+    "lobby": "room",
+    "warehouse": "room",
+    "garage": "room",
+}
+
+GENERIC_PRIMARY_LABELS_TO_DROP = {
+    "room",
+    "indoor",
+    "outdoor",
 }
 
 EXACT_CATEGORY_RULES = {
-    # Office
     "/o/office": [
         "office_room",
         "room",
@@ -210,7 +294,6 @@ EXACT_CATEGORY_RULES = {
         "indoor",
     ],
 
-    # Restaurant
     "/r/restaurant": [
         "restaurant_indoor",
         "room",
@@ -236,7 +319,6 @@ EXACT_CATEGORY_RULES = {
         "outdoor",
     ],
 
-    # Outros interiores
     "/b/bedroom": [
         "bedroom",
         "room",
@@ -253,7 +335,6 @@ EXACT_CATEGORY_RULES = {
         "indoor",
     ],
 
-    # Escola
     "/c/classroom": [
         "classroom",
         "school",
@@ -273,7 +354,6 @@ EXACT_CATEGORY_RULES = {
         "indoor",
     ],
 
-    # Hospital
     "/h/hospital": [
         "hospital",
         "room",
@@ -293,32 +373,92 @@ EXACT_CATEGORY_RULES = {
 
 
 CATEGORY_BLOCKLIST_BY_TARGET = {
-    "office": [
+    "office_room": [
         "office_building",
+        "/o/office_building",
         "veterinarians_office",
+        "/v/veterinarians_office",
     ],
-    "restaurant": [
+
+    "office_cubicles": [
+        "office_building",
+        "/o/office_building",
+        "veterinarians_office",
+        "/v/veterinarians_office",
+    ],
+
+    "restaurant_indoor": [
         "barndoor",
+        "/b/barndoor",
         "barn",
+        "/b/barn",
         "wet_bar",
-        "bar",
+        "/w/wet_bar",
         "restaurant_kitchen",
+        "/r/restaurant_kitchen",
     ],
+
     "kitchen": [
         "restaurant_kitchen",
+        "/r/restaurant_kitchen",
     ],
+
+    "cafeteria": [
+        "coffee_shop",
+        "/c/coffee_shop",
+    ],
+
     "classroom": [],
+
     "hospital": [
         "corridor",
+        "/c/corridor",
     ],
+
     "store": [
         "coffee_shop",
-        "general_store/outdoor",
-        "market/outdoor",
+        "/c/coffee_shop",
+        "general_store_outdoor",
+        "/g/general_store_outdoor",
+        "market_outdoor",
+        "/m/market_outdoor",
         "shopfront",
+        "/s/shopfront",
     ],
 }
 
+IGNORED_EXACT_CATEGORIES = {
+    "/o/office_building",
+    "/v/veterinarians_office",
+}
+
+IGNORED_EXACT_CATEGORIES_BY_SOURCE = {
+    "places365": {
+        "/o/office",
+        "/o/office_building",
+        "/v/veterinarians_office",
+    },
+    "places": {
+        "/o/office",
+        "/o/office_building",
+        "/v/veterinarians_office",
+    },
+    "fiftyone": {
+        "/o/office",
+        "/o/office_building",
+        "/v/veterinarians_office",
+    },
+    "mit_indoor67": {
+        "bar",
+        "bathroom",
+        "locker_room",
+        "corridor",
+        "lobby",
+        "waiting_room",
+        "waitingroom",
+        "restaurant_kitchen",
+    },
+}
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
@@ -334,6 +474,60 @@ def normalize_text(value: str) -> str:
         value = value.replace("__", "_")
 
     return value.strip("_/")
+
+def normalize_category_path(value: str) -> str:
+    normalized = normalize_text(value)
+
+    if not normalized:
+        return ""
+
+    if normalized.startswith("/"):
+        return normalized
+
+    parts = normalized.split("/")
+
+    if len(parts) >= 2 and len(parts[0]) == 1:
+        return "/" + "/".join(parts)
+
+    return normalized
+
+
+def should_ignore_category_for_source(
+    category_name: str,
+    source_dataset: str,
+) -> bool:
+    normalized_source = normalize_text(source_dataset)
+    normalized_category = normalize_text(category_name)
+    normalized_path = normalize_category_path(category_name)
+
+    ignored = set()
+
+    for source_key, categories in IGNORED_EXACT_CATEGORIES_BY_SOURCE.items():
+        normalized_source_key = normalize_text(source_key)
+
+        if normalized_source_key in normalized_source:
+            ignored.update(categories)
+
+    normalized_ignored = {
+        normalize_text(item)
+        for item in ignored
+    }
+
+    normalized_path_ignored = {
+        normalize_category_path(item)
+        for item in ignored
+    }
+
+    return (
+        normalized_category in normalized_ignored
+        or normalized_path in normalized_path_ignored
+    )
+
+def normalize_mit_indoor67_category(category_name: str) -> str:
+    normalized = normalize_text(category_name)
+
+    # O MIT costuma usar livingroom, computerroom, hospitalroom etc.
+    return MIT_INDOOR67_CATEGORY_ALIASES.get(normalized, normalized)
 
 def normalize_category_path(value: str) -> str:
     value = str(value).strip().lower()
@@ -397,6 +591,25 @@ def warn_missing_recommended_labels(active_labels: Sequence[str]) -> None:
             "Se quiser treinar essas classes, adicione-as em ai/spectra/labels/label_sets.py."
         )
 
+def drop_generic_primary_rows(
+    rows: List[Dict[str, object]],
+) -> List[Dict[str, object]]:
+    filtered_rows = []
+    dropped = 0
+
+    for row in rows:
+        primary_label = normalize_text(str(row.get("primary_label", "")))
+
+        if primary_label in GENERIC_PRIMARY_LABELS_TO_DROP:
+            dropped += 1
+            continue
+
+        filtered_rows.append(row)
+
+    print("\nLinhas removidas por primary_label genérico:", dropped)
+
+    return filtered_rows
+
 
 def category_to_spectra_labels(
     category_name: str,
@@ -404,6 +617,8 @@ def category_to_spectra_labels(
 ) -> List[str]:
     normalized_path = normalize_category_path(category_name)
     normalized_category = normalize_text(category_name)
+    if normalized_path in IGNORED_EXACT_CATEGORIES:
+        return []
 
     active_label_set = set(active_labels)
 
@@ -534,6 +749,7 @@ def infer_primary_label(labels: Sequence[str]) -> Optional[str]:
         "kitchen",
         "bedroom",
         "living_room",
+        "dining_room",
 
         "office_room",
         "office_cubicles",
@@ -543,7 +759,6 @@ def infer_primary_label(labels: Sequence[str]) -> Optional[str]:
         "restaurant_indoor",
         "fastfood_restaurant",
         "cafeteria",
-        "dining_room",
         "restaurant_patio",
 
         "classroom",
@@ -551,6 +766,7 @@ def infer_primary_label(labels: Sequence[str]) -> Optional[str]:
         "store",
         "hospital",
         "sports_field",
+
         "room",
         "indoor",
         "outdoor",
@@ -613,6 +829,34 @@ def iter_images_from_directory(input_dir: Path) -> Iterable[Tuple[Path, str]]:
 
         yield image_path, category_name
 
+def iter_images_from_mit_indoor67(input_dir: Path) -> Iterable[Tuple[Path, str]]:
+    input_dir = input_dir.resolve()
+
+    # Caso o usuário passe a pasta raiz do dataset, tenta entrar em Images/
+    images_dir = input_dir / "Images"
+
+    if images_dir.exists() and images_dir.is_dir():
+        root_dir = images_dir
+    else:
+        root_dir = input_dir
+
+    for image_path in sorted(root_dir.rglob("*")):
+        if not image_path.is_file():
+            continue
+
+        if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+
+        relative = image_path.relative_to(root_dir)
+
+        if len(relative.parts) <= 1:
+            category_name = image_path.parent.name
+        else:
+            category_name = relative.parts[0]
+
+        category_name = normalize_mit_indoor67_category(category_name)
+
+        yield image_path, category_name
 
 def load_fiftyone_samples(
     dataset_name: str,
@@ -651,12 +895,30 @@ def load_fiftyone_samples(
 
 
 def extract_fiftyone_label(sample) -> Optional[str]:
+    category_from_path = extract_places_category_from_filepath(
+        sample.filepath
+    )
+
+    if category_from_path:
+        return category_from_path
+
     candidate_fields = [
         "ground_truth",
         "label",
         "classification",
         "scene",
     ]
+
+    ignored_values = {
+        "train",
+        "validation",
+        "val",
+        "test",
+        "data",
+        "places",
+        "places365",
+        "fiftyone",
+    }
 
     for field in candidate_fields:
         try:
@@ -666,20 +928,87 @@ def extract_fiftyone_label(sample) -> Optional[str]:
             value = sample[field]
 
             if hasattr(value, "label"):
-                return str(value.label)
+                label = normalize_text(str(value.label))
+
+                if label and label not in ignored_values:
+                    return label
 
             if isinstance(value, str):
-                return value
+                label = normalize_text(value)
+
+                if label and label not in ignored_values:
+                    return label
 
         except Exception:
             continue
 
-    # Fallback: algumas versões guardam em tags.
-    try:
-        if sample.tags:
-            return str(sample.tags[0])
-    except Exception:
-        pass
+    return None
+
+def extract_places_category_from_filepath(filepath: str) -> Optional[str]:
+    path = Path(filepath)
+    filename = normalize_text(path.stem)
+
+    if not filename:
+        return None
+
+    # Caso atual do seu Places/FiftyOne:
+    # l_lagoon_00004021.jpg
+    # f_fastfood_restaurant_00004546.jpg
+    # l_living_room_00004707.jpg
+    # c_classroom_00001536.jpg
+    filename_parts = filename.split("_")
+
+    if len(filename_parts) >= 3 and len(filename_parts[0]) == 1:
+        letter = filename_parts[0]
+
+        # Remove o índice numérico final.
+        if filename_parts[-1].isdigit():
+            category_parts = filename_parts[1:-1]
+        else:
+            category_parts = filename_parts[1:]
+
+        category = "_".join(category_parts)
+
+        if category:
+            return f"/{letter}/{category}"
+
+    # Caso antigo/alternativo:
+    # .../data/o/office/image.jpg
+    # .../train/o/office/image.jpg
+    normalized_parts = [
+        normalize_text(part)
+        for part in path.parts
+    ]
+
+    ignored_parts = {
+        "c:",
+        "users",
+        "joaov",
+        "fiftyone",
+        "places",
+        "places365",
+        "data",
+        "train",
+        "validation",
+        "val",
+        "test",
+    }
+
+    useful_parts = [
+        part
+        for part in normalized_parts[:-1]
+        if part and part not in ignored_parts
+    ]
+
+    if len(useful_parts) >= 2:
+        possible_letter = useful_parts[-2]
+        possible_category = useful_parts[-1]
+
+        if len(possible_letter) == 1:
+            return f"/{possible_letter}/{possible_category}"
+
+    if useful_parts:
+        return useful_parts[-1]
 
     return None
 
@@ -703,15 +1032,43 @@ def collect_rows_from_fiftyone(
     rows = []
     skipped_without_label = 0
     skipped_unmapped = 0
-
+    debug_count = 0
     for sample in dataset:
         category_name = extract_fiftyone_label(sample)
+
+        if should_ignore_category_for_source(
+            category_name=category_name,
+            source_dataset=resolved_name,
+        ):
+            skipped_unmapped += 1
+            continue
+
+        if debug_count < 20:
+            print("DEBUG category_name:", category_name)
+            print("DEBUG filepath:", sample.filepath)
+
+        if not category_name:
+            skipped_without_label += 1
+            debug_count += 1
+            continue
+
+        labels = category_to_spectra_labels(
+            category_name,
+            active_labels,
+        )
+
+        if debug_count < 20:
+            print("DEBUG mapped labels:", labels)
+            debug_count += 1
 
         if not category_name:
             skipped_without_label += 1
             continue
 
         labels = category_to_spectra_labels(category_name, active_labels)
+
+        if len(rows) < 20:
+            print("DEBUG mapped labels:", labels)
 
         if not labels:
             skipped_unmapped += 1
@@ -758,6 +1115,13 @@ def collect_rows_from_directory(
     skipped_unmapped = 0
 
     for image_path, category_name in iter_images_from_directory(input_dir):
+        if should_ignore_category_for_source(
+            category_name=category_name,
+            source_dataset=source_dataset,
+        ):
+            skipped_unmapped += 1
+            continue
+
         labels = category_to_spectra_labels(category_name, active_labels)
 
         if not labels:
@@ -791,6 +1155,57 @@ def collect_rows_from_directory(
 
     return rows
 
+def collect_rows_from_mit_indoor67(
+    input_dir: Path,
+    source_split: str,
+    max_samples: Optional[int],
+    active_labels: Sequence[str],
+    train_ratio: float,
+    validation_ratio: float,
+) -> List[Dict[str, object]]:
+    rows = []
+    skipped_unmapped = 0
+
+    for image_path, category_name in iter_images_from_mit_indoor67(input_dir):
+        if should_ignore_category_for_source(
+            category_name=category_name,
+            source_dataset="mit_indoor67",
+        ):
+            skipped_unmapped += 1
+            continue
+
+        labels = category_to_spectra_labels(category_name, active_labels)
+
+        if not labels:
+            skipped_unmapped += 1
+            continue
+
+        generated_split = deterministic_split(
+            key=str(image_path),
+            train_ratio=train_ratio,
+            validation_ratio=validation_ratio,
+        )
+
+        rows.append(
+            build_label_row(
+                image_path=image_path,
+                labels=labels,
+                active_labels=active_labels,
+                source_dataset="mit_indoor67",
+                source_category=category_name,
+                source_split=source_split,
+                generated_split=generated_split,
+            )
+        )
+
+        if max_samples is not None and len(rows) >= max_samples:
+            break
+
+    print("\nMIT Indoor 67 carregado:", input_dir)
+    print("Amostras aceitas:", len(rows))
+    print("Categorias sem mapeamento:", skipped_unmapped)
+
+    return rows
 
 def balance_rows(
     rows: List[Dict[str, object]],
@@ -1175,6 +1590,9 @@ def build_spectra_scene_dataset_places(
     min_per_target_label: int = 250,
     max_new_rows: Optional[int] = None,
     append_existing: bool = True,
+    mit_input_dir: Optional[str] = None,
+    places_max_samples: Optional[int] = None,
+    mit_max_samples: Optional[int] = None,
 ) -> Path:
     active_labels = get_active_scene_labels()
     warn_missing_recommended_labels(active_labels)
@@ -1255,6 +1673,44 @@ def build_spectra_scene_dataset_places(
             validation_ratio=validation_ratio,
         )
 
+    elif source == "mit_indoor67":
+        if input_dir is None:
+            raise ValueError("--input-dir é obrigatório quando --source mit_indoor67.")
+
+        candidate_rows = collect_rows_from_mit_indoor67(
+            input_dir=Path(input_dir),
+            source_split=source_split,
+            max_samples=max_samples,
+            active_labels=active_labels,
+            train_ratio=train_ratio,
+            validation_ratio=validation_ratio,
+        )
+
+    elif source == "combined_places_mit":
+        if mit_input_dir is None:
+            raise ValueError("--mit-input-dir é obrigatório quando --source combined_places_mit.")
+
+        places_rows = collect_rows_from_fiftyone(
+            dataset_name=fiftyone_dataset_name,
+            split=source_split,
+            max_samples=places_max_samples or max_samples,
+            active_labels=active_labels,
+            train_ratio=train_ratio,
+            validation_ratio=validation_ratio,
+            fiftyone_name=fiftyone_name,
+        )
+
+        mit_rows = collect_rows_from_mit_indoor67(
+            input_dir=Path(mit_input_dir),
+            source_split=source_split,
+            max_samples=mit_max_samples,
+            active_labels=active_labels,
+            train_ratio=train_ratio,
+            validation_ratio=validation_ratio,
+        )
+
+        candidate_rows = places_rows + mit_rows
+
     else:
         raise ValueError("--source deve ser 'fiftyone' ou 'directory'.")
 
@@ -1285,6 +1741,7 @@ def build_spectra_scene_dataset_places(
 
     rows = existing_rows + new_rows
     rows = dedupe_rows_by_frame_path(rows)
+    rows = drop_generic_primary_rows(rows)
 
     if not target_labels and max_per_primary_label is not None:
         rows = balance_rows(
@@ -1327,9 +1784,9 @@ def main():
 
     parser.add_argument(
         "--source",
-        choices=["fiftyone", "directory"],
+        choices=["fiftyone", "directory", "mit_indoor67", "combined_places_mit"],
         required=True,
-        help="Fonte dos dados: fiftyone ou directory.",
+        help="Fonte dos dados: fiftyone, directory ou mit_indoor67.",
     )
 
     parser.add_argument(
@@ -1450,6 +1907,26 @@ def main():
         help="Não carrega o CSV existente; recria do zero.",
     )
 
+    parser.add_argument(
+    "--mit-input-dir",
+    default=None,
+    help="Diretório do MIT Indoor 67 usado quando --source combined_places_mit.",
+    )
+
+    parser.add_argument(
+        "--places-max-samples",
+        type=int,
+        default=None,
+        help="Limite de amostras do Places quando --source combined_places_mit.",
+    )
+
+    parser.add_argument(
+        "--mit-max-samples",
+        type=int,
+        default=None,
+        help="Limite de amostras do MIT Indoor 67 quando --source combined_places_mit.",
+    )
+
     args = parser.parse_args()
 
     max_per_primary_label = args.max_per_primary_label
@@ -1477,6 +1954,9 @@ def main():
     min_per_target_label=args.min_per_target_label,
     max_new_rows=args.max_new_rows,
     append_existing=not args.no_append_existing,
+    mit_input_dir=args.mit_input_dir,
+    places_max_samples=args.places_max_samples,
+    mit_max_samples=args.mit_max_samples,
     )
 
 
