@@ -129,9 +129,18 @@ class ActionPredictor:
             group_by_category=False,
         )
 
-    def _clean_action_predictions(self, predictions):
+    def _clean_action_predictions(
+        self,
+        predictions: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
         """
-        Remove falsos positivos comuns e adiciona labels derivadas simples.
+        Remove falsos positivos comuns depois da v3 e adiciona labels derivadas simples.
+
+        Observação importante:
+        - sports e exercising podem ser semanticamente possíveis em vídeos de corrida.
+        - Para audiodescrição, porém, eles são secundários e podem atrapalhar a frase.
+        - Por isso só mantemos sports quando há evidência esportiva específica e só mantemos
+          exercising quando está forte o bastante para ser útil na descrição.
         """
 
         if not predictions:
@@ -142,6 +151,35 @@ class ActionPredictor:
             for item in predictions
         }
 
+        def has_any_label(labels: List[str], min_score: float = 0.0) -> bool:
+            return any(by_label.get(label, 0.0) >= min_score for label in labels)
+
+        moving_score = by_label.get("moving", 0.0)
+        fast_motion_score = by_label.get("fast_motion", 0.0)
+        running_score = by_label.get("running", 0.0)
+        exercising_score = by_label.get("exercising", 0.0)
+        sports_score = by_label.get("sports", 0.0)
+        jumping_score = by_label.get("jumping", 0.0)
+        arms_raised_score = by_label.get("arms_raised", 0.0)
+
+        has_running_context = (
+            running_score >= 0.30
+            or (moving_score >= 0.65 and fast_motion_score >= 0.30)
+            or (moving_score >= 0.65 and exercising_score >= 0.30)
+        )
+
+        has_specific_sport_context = has_any_label(
+            [
+                "ball_sport",
+                "racket_sport",
+                "water_activity",
+                "martial_activity",
+                "swimming",
+                "cycling",
+            ],
+            min_score=0.30,
+        )
+
         cleaned = []
 
         for item in predictions:
@@ -149,15 +187,44 @@ class ActionPredictor:
             score = float(item["score"])
 
             # arms_raised confunde muito com corrida, dança, exercício e salto.
-            # Só mantém se estiver bem confiante.
-            if label == "arms_raised" and score < 0.65:
+            if label == "arms_raised" and score < 0.85:
                 continue
 
-            # jumping também pode aparecer em frames de corrida.
-            # Mantém apenas se estiver mais confiante.
-            if label == "jumping" and score < 0.75:
+            # jumping aparece bastante como ruído em passadas de corrida.
+            if label == "jumping" and score < 0.90:
                 continue
 
+            # falling em frames comuns de movimento geralmente é ruído.
+            if label == "falling" and score < 0.70:
+                continue
+
+            # sports é amplo demais: só mantém se houver contexto esportivo específico
+            # ou se o próprio modelo estiver quase absoluto.
+            if label == "sports":
+                strong_jump_sport = jumping_score >= 0.90
+
+                if not has_specific_sport_context and not strong_jump_sport and score < 0.98:
+                    continue
+
+            # exercising pode ser verdade em corrida, mas é secundário para narrativa.
+            # Mantém apenas se estiver forte ou se não houver contexto claro de corrida.
+            if label == "exercising":
+                if has_running_context and score < 0.80:
+                    continue
+
+            # throwing ficou sensível demais após mapear esportes.
+            # Exige evidência forte de braço/situação esportiva específica.
+            if label == "throwing":
+                has_throw_context = (
+                    arms_raised_score >= 0.85
+                    or by_label.get("ball_sport", 0.0) >= 0.50
+                    or by_label.get("racket_sport", 0.0) >= 0.50
+                )
+
+                if not has_throw_context or score < 0.80:
+                    continue
+
+            # standing baixo junto com movimento geralmente é ruído.
             if label == "standing" and (
                 "moving" in by_label
                 or "fast_motion" in by_label
@@ -175,18 +242,14 @@ class ActionPredictor:
 
         cleaned_labels = {item["label"] for item in cleaned}
 
-        moving_score = by_label.get("moving", 0.0)
-        exercise_score = by_label.get("exercising", 0.0)
-        fast_motion_score = by_label.get("fast_motion", 0.0)
-
         # Regra derivada para corrida.
-        # Não força running só por "moving", precisa ter exercício ou movimento rápido.
+        # Não força running só por moving; precisa haver exercício ou movimento rápido.
         if "running" not in cleaned_labels:
-            if moving_score >= 0.65 and exercise_score >= 0.30:
+            if moving_score >= 0.65 and exercising_score >= 0.30:
                 cleaned.append(
                     {
                         "label": "running",
-                        "score": round(min(moving_score, max(exercise_score, 0.30)), 4),
+                        "score": round(min(moving_score, max(exercising_score, 0.30)), 4),
                     }
                 )
             elif moving_score >= 0.70 and fast_motion_score >= 0.30:
@@ -197,12 +260,37 @@ class ActionPredictor:
                     }
                 )
 
+        cleaned = self._deduplicate_predictions(cleaned)
+
         cleaned.sort(
             key=lambda item: item["score"],
             reverse=True,
         )
 
         return cleaned
+
+    def _deduplicate_predictions(
+        self,
+        predictions: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        best_by_label: Dict[str, Dict[str, Any]] = {}
+
+        for prediction in predictions:
+            label = prediction.get("label")
+
+            if not label:
+                continue
+
+            score = float(prediction.get("score", 0.0))
+            current = best_by_label.get(label)
+
+            if current is None or score > float(current.get("score", 0.0)):
+                best_by_label[label] = {
+                    "label": label,
+                    "score": round(score, 4),
+                }
+
+        return list(best_by_label.values())
 
     def _apply_action_consistency_rules(
         self,
