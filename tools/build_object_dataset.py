@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pandas as pd
+import json
 
 from ai.spectra.Object.labels import LABELS
 
@@ -10,109 +11,128 @@ from ai.spectra.Object.labels import LABELS
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
 
-COCO_TO_SPECTRA_OBJECT: Dict[str, List[str]] = {
-    # COCO people: keep out of Object by default; Person already handles this.
-    "person": [],
+COCO_TO_SPECTRA_OBJECT = {
+    # Furniture / indoor
+    "chair": ["chair"],
+    "couch": ["sofa"],
+    "bed": ["bed"],
+    "dining table": ["table"],
+    "toilet": ["toilet"],
+    "bench": ["chair"],
 
-    # vehicles
-    "bicycle": ["bicycle"],
+    # Electronics
+    "cell phone": ["phone", "screen"],
+    "laptop": ["computer", "screen"],
+    "tv": ["television", "screen"],
+    "keyboard": ["keyboard", "computer"],
+    "mouse": ["mouse", "computer"],
+    "remote": ["remote"],
+
+    # Vehicles
     "car": ["car"],
+    "bicycle": ["bicycle"],
     "motorcycle": ["motorcycle"],
-    "airplane": ["airplane"],
     "bus": ["bus"],
-    "train": ["train"],
     "truck": ["truck"],
+    "train": ["train"],
     "boat": ["boat"],
+    "airplane": ["airplane"],
 
-    # animals
-    "bird": ["animal", "bird"],
-    "cat": ["animal", "cat"],
-    "dog": ["animal", "dog"],
-    "horse": ["animal", "horse"],
-    "sheep": ["animal", "sheep"],
-    "cow": ["animal", "cow"],
+    # Animals
+    "dog": ["dog", "animal"],
+    "cat": ["cat", "animal"],
+    "bird": ["bird", "animal"],
+    "horse": ["horse", "animal"],
+    "sheep": ["sheep", "animal"],
+    "cow": ["cow", "animal"],
     "elephant": ["animal"],
     "bear": ["animal"],
     "zebra": ["animal"],
     "giraffe": ["animal"],
 
-    # personal objects
-    "backpack": ["bag", "backpack"],
-    "umbrella": ["umbrella"],
-    "handbag": ["bag", "handbag"],
-    "suitcase": ["bag", "suitcase"],
-
-    # sports/play
-    "frisbee": ["toy", "ball"],
-    "sports ball": ["ball"],
-    "kite": ["toy", "kite"],
-    "baseball bat": ["sports_racket"],
-    "baseball glove": ["ball"],
-    "skateboard": ["skateboard"],
-    "surfboard": ["surfboard"],
-    "tennis racket": ["sports_racket"],
-
-    # kitchen/food
-    "bottle": ["bottle"],
-    "wine glass": ["cup"],
-    "cup": ["cup"],
-    "fork": ["fork"],
-    "knife": ["knife"],
-    "spoon": ["spoon"],
-    "bowl": ["bowl"],
-    "banana": ["food", "fruit"],
-    "apple": ["food", "fruit"],
-    "sandwich": ["food"],
-    "orange": ["food", "fruit"],
+    # Food / kitchen
+    "banana": ["fruit", "food"],
+    "apple": ["fruit", "food"],
+    "orange": ["fruit", "food"],
     "broccoli": ["food"],
     "carrot": ["food"],
     "hot dog": ["food"],
     "pizza": ["food"],
     "donut": ["food"],
     "cake": ["food"],
+    "sandwich": ["food"],
+    "cup": ["cup"],
+    "bottle": ["bottle"],
+    "wine glass": ["cup"],
+    "bowl": ["bowl"],
+    "plate": ["plate"],
+    "fork": ["fork"],
+    "spoon": ["spoon"],
+    "knife": ["knife"],
 
-    # furniture/room
-    "chair": ["chair"],
-    "couch": ["sofa"],
-    "potted plant": [],
-    "bed": ["bed"],
-    "dining table": ["table"],
-    "toilet": ["toilet"],
+    # Bags / accessories
+    "backpack": ["bag", "backpack"],
+    "handbag": ["bag", "handbag"],
+    "suitcase": ["bag", "suitcase"],
+    "umbrella": ["umbrella"],
 
-    # electronics
-    "tv": ["screen", "television"],
-    "laptop": ["computer", "screen"],
-    "mouse": ["mouse"],
-    "remote": ["remote"],
-    "keyboard": ["keyboard", "computer"],
-    "cell phone": ["phone", "screen"],
-
-    # appliances: useful as generic boxes/screens only when labels exist
-    "microwave": ["box"],
-    "oven": ["box"],
-    "toaster": ["box"],
-    "sink": [],
-    "refrigerator": ["box"],
-
-    # documents/narrative
+    # Reading / paper
     "book": ["book", "document"],
-    "clock": [],
-    "vase": [],
-    "scissors": ["knife"],
-    "teddy bear": ["toy"],
-    "hair drier": [],
-    "toothbrush": [],
 
-    # COCO labels we intentionally ignore for now
+    # Sports / toys
+    "sports ball": ["ball", "toy"],
+    "frisbee": ["toy"],
+    "kite": ["kite", "toy"],
+    "skateboard": ["skateboard", "toy"],
+    "surfboard": ["surfboard"],
+    "tennis racket": ["sports_racket"],
+    "baseball bat": ["sports_racket"],
+    "baseball glove": ["sports_racket"],
+
+    # Misc
+    "teddy bear": ["toy"],
+    "toothbrush": ["toy"],
+    "scissors": ["knife"],
+
+    # Ignorados por enquanto
+    "person": [],
     "traffic light": [],
     "fire hydrant": [],
     "stop sign": [],
     "parking meter": [],
-    "bench": ["chair"],
+    "potted plant": [],
+    "refrigerator": [],
+    "oven": [],
+    "microwave": [],
+    "toaster": [],
+    "sink": [],
+    "vase": [],
+    "clock": [],
+    "hair drier": [],
     "tie": [],
     "skis": [],
     "snowboard": [],
 }
+
+
+def map_coco_label_to_object(label_name: str) -> List[str]:
+    if label_name is None:
+        return []
+
+    label_name = normalize_text(label_name)
+    mapped_labels = COCO_TO_SPECTRA_OBJECT.get(label_name, [])
+
+    if mapped_labels is None:
+        return []
+
+    if isinstance(mapped_labels, str):
+        mapped_labels = [mapped_labels]
+
+    return sorted({
+        label
+        for label in mapped_labels
+        if label in LABELS
+    })
 
 
 FOLDER_NAME_TO_SPECTRA_OBJECT: Dict[str, List[str]] = {
@@ -166,12 +186,134 @@ def normalize_folder_name(value: Any) -> str:
 def normalize_path_text(value: Any) -> str:
     return str(value).replace("\\", "/")
 
+def command_from_manual_coco(args) -> None:
+    coco_root = Path(args.coco_root)
+    split = args.split
 
-def map_coco_label_to_object(label_name: str) -> List[str]:
-    label_name = normalize_text(label_name)
-    mapped_labels = COCO_TO_SPECTRA_OBJECT.get(label_name, [])
-    return [label for label in mapped_labels if label in LABELS]
+    if split == "train":
+        image_dir = coco_root / "train2017"
+        annotation_path = coco_root / "annotations" / "instances_train2017.json"
+    elif split in ["validation", "val"]:
+        image_dir = coco_root / "val2017"
+        annotation_path = coco_root / "annotations" / "instances_val2017.json"
+        split = "validation"
+    else:
+        raise ValueError("Split inválido. Use train ou validation.")
 
+    if not image_dir.exists():
+        raise FileNotFoundError(f"Pasta de imagens não encontrada: {image_dir}")
+
+    if not annotation_path.exists():
+        raise FileNotFoundError(f"Arquivo de anotações não encontrado: {annotation_path}")
+
+    print("Lendo COCO manual...")
+    print("Root:", coco_root)
+    print("Split:", split)
+    print("Imagens:", image_dir)
+    print("Anotações:", annotation_path)
+
+    with open(annotation_path, "r", encoding="utf-8") as file:
+        coco_data = json.load(file)
+
+    categories_by_id = {
+        category["id"]: category["name"]
+        for category in coco_data.get("categories", [])
+    }
+
+    images_by_id = {
+        image["id"]: image["file_name"]
+        for image in coco_data.get("images", [])
+    }
+
+    labels_by_image_id = {}
+
+    mapped_category_counts = {}
+    unmapped_category_counts = {}
+
+    for annotation in coco_data.get("annotations", []):
+        image_id = annotation.get("image_id")
+        category_id = annotation.get("category_id")
+        category_name = categories_by_id.get(category_id)
+
+        mapped_labels = map_coco_label_to_object(category_name)
+
+        if not mapped_labels:
+            if category_name is not None:
+                unmapped_category_counts[category_name] = (
+                    unmapped_category_counts.get(category_name, 0) + 1
+                )
+            continue
+
+        if image_id not in labels_by_image_id:
+            labels_by_image_id[image_id] = set()
+
+        for mapped_label in mapped_labels:
+            mapped_category_counts[mapped_label] = (
+                mapped_category_counts.get(mapped_label, 0) + 1
+            )
+            labels_by_image_id[image_id].add(mapped_label)
+
+    image_ids = list(images_by_id.keys())
+
+    if args.max_samples is not None:
+        image_ids = image_ids[: args.max_samples]
+
+    rows = []
+
+    for image_id in image_ids:
+        labels = labels_by_image_id.get(image_id, set())
+
+        if not labels:
+            continue
+
+        file_name = images_by_id[image_id]
+        image_path = image_dir / file_name
+
+        if not image_path.exists():
+            continue
+
+        row = {
+            "frame_path": str(image_path),
+            "source_dataset": "coco-2017",
+            "source_split": split,
+            "source_labels": ";".join(sorted(labels)),
+        }
+
+        for label in LABELS:
+            row[label] = 1 if label in labels else 0
+
+        rows.append(row)
+
+    print("\nCategorias COCO mapeadas:")
+    for label, count in sorted(mapped_category_counts.items()):
+        print(f"- {label}: {count}")
+
+    print("\nCategorias COCO ignoradas/não mapeadas:")
+    for label, count in sorted(unmapped_category_counts.items())[:30]:
+        print(f"- {label}: {count}")
+
+    if not rows:
+        raise ValueError(
+            "Nenhuma imagem válida foi convertida do COCO manual. "
+            "Isso geralmente significa que o mapeamento COCO_TO_SPECTRA_OBJECT não bateu com as labels atuais."
+        )
+
+    df = pd.DataFrame(rows)
+
+    df = clean_dataset(
+        df,
+        check_images=not args.no_check_images,
+    )
+
+    output_csv = Path(args.output_csv)
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+
+    print("\nDataset Object criado a partir do COCO manual:")
+    print(output_csv)
+    print("Linhas salvas:", len(df))
+
+    print_dataset_summary(df)
 
 def map_folder_label_to_object(label_name: str) -> List[str]:
     normalized_folder = normalize_folder_name(label_name)
@@ -180,15 +322,29 @@ def map_folder_label_to_object(label_name: str) -> List[str]:
     mapped_labels = []
 
     if normalized_folder in FOLDER_NAME_TO_SPECTRA_OBJECT:
-        mapped_labels.extend(FOLDER_NAME_TO_SPECTRA_OBJECT[normalized_folder])
+        value = FOLDER_NAME_TO_SPECTRA_OBJECT[normalized_folder]
+        if value is None:
+            value = []
+        elif isinstance(value, str):
+            value = [value]
+        mapped_labels.extend(value)
 
     if normalized_coco in COCO_TO_SPECTRA_OBJECT:
-        mapped_labels.extend(COCO_TO_SPECTRA_OBJECT[normalized_coco])
+        value = COCO_TO_SPECTRA_OBJECT[normalized_coco]
+        if value is None:
+            value = []
+        elif isinstance(value, str):
+            value = [value]
+        mapped_labels.extend(value)
 
     if normalized_folder in LABELS:
         mapped_labels.append(normalized_folder)
 
-    return sorted({label for label in mapped_labels if label in LABELS})
+    return sorted({
+        label
+        for label in mapped_labels
+        if label in LABELS
+    })
 
 
 def ensure_object_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -505,6 +661,31 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--csv", required=True)
     validate_parser.add_argument("--no-check-images", action="store_true")
     validate_parser.set_defaults(func=command_validate)
+
+    manual_coco_parser = subparsers.add_parser("from-manual-coco")
+    manual_coco_parser.add_argument(
+        "--coco-root",
+        default="data/external/object/coco-2017",
+    )
+    manual_coco_parser.add_argument(
+        "--split",
+        choices=["train", "validation", "val"],
+        default="validation",
+    )
+    manual_coco_parser.add_argument(
+        "--output-csv",
+        default="data/datasets/Object/object_coco_manual.csv",
+    )
+    manual_coco_parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+    )
+    manual_coco_parser.add_argument(
+        "--no-check-images",
+        action="store_true",
+    )
+    manual_coco_parser.set_defaults(func=command_from_manual_coco)
 
     return parser
 
