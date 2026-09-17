@@ -32,6 +32,7 @@ class AtmosphereTrainingConfig:
     backbone_name: str = "resnet18"
     pretrained: bool = True
     freeze_backbone: bool = False
+    unfreeze_last_block: bool = False
     threshold: float = 0.4
     save_plots: bool = True
     cross_validation: bool = False
@@ -187,6 +188,7 @@ def train_single_split(
         backbone_name=config.backbone_name,
         pretrained=config.pretrained,
         freeze_backbone=config.freeze_backbone,
+        unfreeze_last_block=config.unfreeze_last_block,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
@@ -2445,6 +2447,9 @@ def build_config_from_args(
         freeze_backbone=(
             args.freeze_backbone
         ),
+        unfreeze_last_block=(
+            args.unfreeze_last_block
+        ),
         threshold=args.threshold,
         save_plots=(
             not args.no_plots
@@ -2560,6 +2565,11 @@ def main():
     parser.add_argument(
         "--freeze-backbone",
         action="store_true",
+    )
+
+    parser.add_argument(
+    "--unfreeze-last-block",
+    action="store_true",
     )
 
     parser.add_argument(
