@@ -13,7 +13,7 @@ from ai.spectra.Atmosphere.labels import LABELS
 from ai.spectra.Atmosphere.model import SpectraAtmosphereNet
 from ai.spectra.data.dataset import SpectraImageDataset
 from ai.spectra.data.transforms import (
-    get_train_transforms,
+    get_atmosphere_train_transforms,
     get_validation_transforms,
 )
 
@@ -110,7 +110,7 @@ def train_single_split(
 
     train_data = SpectraImageDataset(
         csv_path=dataset_path,
-        transform=get_train_transforms(
+        transform=get_atmosphere_train_transforms(
             config.image_size
         ),
         label_columns=LABELS,
@@ -591,7 +591,7 @@ def train_cross_validation(
 
     train_data = SpectraImageDataset(
         csv_path=dataset_path,
-        transform=get_train_transforms(
+        transform=get_atmosphere_train_transforms(
             config.image_size
         ),
         label_columns=LABELS,
