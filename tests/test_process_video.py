@@ -6,7 +6,7 @@ result = process_video(
 
     scene_model_path="data/models/scene_net_best.pt",
     person_model_path="data/models/Person/person_net_best.pt",
-    object_model_path=None,
+    object_model_path="data/models/Object/object_net_best.pt",
     action_model_path="data/models/Actions/action_net_best.pt",
 
     run_spectra=True,

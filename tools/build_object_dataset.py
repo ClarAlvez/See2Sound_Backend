@@ -1,15 +1,12 @@
 import argparse
+import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pandas as pd
-import json
-
 from ai.spectra.Object.labels import LABELS
 
-
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
-
 
 COCO_TO_SPECTRA_OBJECT = {
     # Furniture / indoor
@@ -114,6 +111,93 @@ COCO_TO_SPECTRA_OBJECT = {
     "snowboard": [],
 }
 
+OPEN_IMAGES_TO_SPECTRA_OBJECT = {
+    # Furniture / indoor
+    "Chair": ["chair"],
+    "Table": ["table"],
+    "Couch": ["sofa"],
+    "Bed": ["bed"],
+    "Toilet": ["toilet"],
+    "Door": ["door"],
+    "Window": ["window"],
+    "Mirror": ["mirror"],
+    "Desk": ["desk", "table"],
+    "Shelf": ["shelf"],
+    "Cabinetry": ["cabinet"],
+    "Lamp": ["lamp"],
+
+    # Electronics
+    "Mobile phone": ["phone", "screen"],
+    "Computer keyboard": ["keyboard", "computer"],
+    "Computer mouse": ["mouse", "computer"],
+    "Laptop": ["computer", "screen"],
+    "Television": ["television", "screen"],
+    "Computer monitor": ["screen", "computer"],
+    "Camera": ["camera"],
+    "Headphones": ["headphones"],
+    "Microphone": ["microphone"],
+
+    # Vehicles
+    "Car": ["car"],
+    "Bicycle": ["bicycle"],
+    "Motorcycle": ["motorcycle"],
+    "Bus": ["bus"],
+    "Truck": ["truck"],
+    "Train": ["train"],
+    "Boat": ["boat"],
+    "Airplane": ["airplane"],
+
+    # Animals
+    "Dog": ["dog", "animal"],
+    "Cat": ["cat", "animal"],
+    "Bird": ["bird", "animal"],
+    "Horse": ["horse", "animal"],
+    "Sheep": ["sheep", "animal"],
+    "Cattle": ["cow", "animal"],
+    "Fish": ["fish", "animal"],
+
+    # Kitchen / food
+    "Food": ["food"],
+    "Fruit": ["fruit", "food"],
+    "Cup": ["cup"],
+    "Bottle": ["bottle"],
+    "Bowl": ["bowl"],
+    "Plate": ["plate"],
+    "Fork": ["fork"],
+    "Spoon": ["spoon"],
+    "Kitchen knife": ["knife"],
+
+    # Accessories
+    "Backpack": ["bag", "backpack"],
+    "Handbag": ["bag", "handbag"],
+    "Suitcase": ["bag", "suitcase"],
+    "Umbrella": ["umbrella"],
+    "Glasses": ["glasses"],
+    "Watch": ["watch"],
+    "Hat": ["hat"],
+
+    # Documents / paper
+    "Book": ["book", "document"],
+    "Paper": ["paper", "document"],
+    "Envelope": ["letter", "paper", "document"],
+    "Poster": ["poster", "paper"],
+    "Newspaper": ["newspaper", "paper", "document"],
+
+    # Sports / toys
+    "Ball": ["ball", "toy"],
+    "Toy": ["toy"],
+    "Kite": ["kite", "toy"],
+    "Skateboard": ["skateboard", "toy"],
+    "Surfboard": ["surfboard"],
+    "Tennis racket": ["sports_racket"],
+
+    # Narrative
+    "Box": ["box"],
+    "Key": ["key"],
+    "Weapon": ["weapon"],
+    "Musical instrument": ["musical_instrument"],
+    "Dice": ["dice"],
+}
 
 def map_coco_label_to_object(label_name: str) -> List[str]:
     if label_name is None:
@@ -134,6 +218,93 @@ def map_coco_label_to_object(label_name: str) -> List[str]:
         if label in LABELS
     })
 
+def map_open_images_label_to_object(label_name: str) -> List[str]:
+    if label_name is None:
+        return []
+
+    mapped_labels = OPEN_IMAGES_TO_SPECTRA_OBJECT.get(str(label_name).strip(), [])
+
+    if mapped_labels is None:
+        return []
+
+    if isinstance(mapped_labels, str):
+        mapped_labels = [mapped_labels]
+
+    return sorted({
+        label
+        for label in mapped_labels
+        if label in LABELS
+    })
+
+def command_from_open_images(args: argparse.Namespace) -> None:
+    try:
+        import fiftyone.zoo as foz
+    except ImportError as error:
+        raise ImportError(
+            "FiftyOne não está instalado. Instale com: pip install fiftyone"
+        ) from error
+
+    output_csv = Path(args.output_csv)
+
+    classes = args.classes
+
+    if classes is None or len(classes) == 0:
+        classes = list(OPEN_IMAGES_TO_SPECTRA_OBJECT.keys())
+
+    print("Carregando Open Images V7 pelo FiftyOne...")
+    print("Split:", args.split)
+    print("Max samples:", args.max_samples)
+    print("Classes:", classes)
+
+    dataset = foz.load_zoo_dataset(
+        "open-images-v7",
+        split=args.split,
+        label_types=["detections"],
+        classes=classes,
+        max_samples=args.max_samples,
+        shuffle=args.shuffle,
+        dataset_name=f"spectra-object-open-images-{args.split}",
+    )
+
+    rows = []
+
+    for sample in dataset:
+        source_labels = get_detection_labels_from_sample(sample, args.detections_field)
+
+        spectra_labels: Set[str] = set()
+
+        for source_label in source_labels:
+            spectra_labels.update(map_open_images_label_to_object(source_label))
+
+        if not spectra_labels:
+            continue
+
+        row = {
+            "frame_path": normalize_path_text(sample.filepath),
+            "source_dataset": "open-images-v7",
+            "source_split": args.split,
+            "source_labels": ";".join(sorted(set(source_labels))),
+        }
+
+        for label in LABELS:
+            row[label] = 1 if label in spectra_labels else 0
+
+        rows.append(row)
+
+    if not rows:
+        raise ValueError(
+            "Nenhuma imagem com labels mapeadas foi gerada. Confira classes/split do Open Images."
+        )
+
+    df = pd.DataFrame(rows)
+    df = clean_dataset(df, check_images=not args.no_check_images)
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+
+    print("\nDataset Open Images convertido para Object:")
+    print(output_csv)
+    print_dataset_summary(df)
 
 FOLDER_NAME_TO_SPECTRA_OBJECT: Dict[str, List[str]] = {
     **COCO_TO_SPECTRA_OBJECT,
@@ -656,6 +827,16 @@ def build_parser() -> argparse.ArgumentParser:
     merge_parser.add_argument("--output-csv", required=True)
     merge_parser.add_argument("--no-check-images", action="store_true")
     merge_parser.set_defaults(func=command_merge)
+
+    open_images_parser = subparsers.add_parser("from-open-images")
+    open_images_parser.add_argument("--split", default="validation", choices=["train", "validation", "test"])
+    open_images_parser.add_argument("--output-csv", default="data/datasets/Object/object_open_images_labels.csv")
+    open_images_parser.add_argument("--max-samples", type=int, default=5000)
+    open_images_parser.add_argument("--detections-field", default="ground_truth")
+    open_images_parser.add_argument("--shuffle", action="store_true")
+    open_images_parser.add_argument("--no-check-images", action="store_true")
+    open_images_parser.add_argument("--classes", nargs="+", default=None)
+    open_images_parser.set_defaults(func=command_from_open_images)
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--csv", required=True)

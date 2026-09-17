@@ -1,24 +1,19 @@
-"""
-Labels do modelo Object da Spectra.
-
-A ideia é manter labels úteis para audiodescrição e, ao mesmo tempo,
-compatíveis com um primeiro treino em COCO/Open Images.
-"""
-
 OBJECT_FURNITURE_LABELS = [
     "chair",
     "table",
     "sofa",
     "bed",
     "toilet",
-]
-
-OBJECT_STRUCTURE_LABELS = [
     "door",
     "window",
+    "mirror",
+    "desk",
+    "shelf",
+    "cabinet",
+    "lamp",
 ]
 
-OBJECT_ELECTRONICS_LABELS = [
+OBJECT_ELECTRONIC_LABELS = [
     "phone",
     "computer",
     "screen",
@@ -26,6 +21,9 @@ OBJECT_ELECTRONICS_LABELS = [
     "keyboard",
     "mouse",
     "remote",
+    "camera",
+    "headphones",
+    "microphone",
 ]
 
 OBJECT_VEHICLE_LABELS = [
@@ -47,9 +45,10 @@ OBJECT_ANIMAL_LABELS = [
     "horse",
     "sheep",
     "cow",
+    "fish",
 ]
 
-OBJECT_FOOD_AND_KITCHEN_LABELS = [
+OBJECT_FOOD_KITCHEN_LABELS = [
     "food",
     "fruit",
     "cup",
@@ -61,24 +60,28 @@ OBJECT_FOOD_AND_KITCHEN_LABELS = [
     "knife",
 ]
 
-OBJECT_PERSONAL_LABELS = [
+OBJECT_BAG_ACCESSORY_LABELS = [
     "bag",
     "backpack",
     "handbag",
     "suitcase",
     "umbrella",
     "glasses",
+    "watch",
+    "hat",
 ]
 
-OBJECT_DOCUMENT_LABELS = [
+OBJECT_READING_LABELS = [
     "book",
     "paper",
     "letter",
     "document",
     "photo",
+    "newspaper",
+    "poster",
 ]
 
-OBJECT_SPORT_AND_PLAY_LABELS = [
+OBJECT_SPORT_TOY_LABELS = [
     "ball",
     "toy",
     "kite",
@@ -100,19 +103,16 @@ OBJECT_NARRATIVE_LABELS = [
     "on_screen_text",
 ]
 
-SPECTRA_OBJECT_LABELS = list(
-    dict.fromkeys(
-        OBJECT_FURNITURE_LABELS
-        + OBJECT_STRUCTURE_LABELS
-        + OBJECT_ELECTRONICS_LABELS
-        + OBJECT_VEHICLE_LABELS
-        + OBJECT_ANIMAL_LABELS
-        + OBJECT_FOOD_AND_KITCHEN_LABELS
-        + OBJECT_PERSONAL_LABELS
-        + OBJECT_DOCUMENT_LABELS
-        + OBJECT_SPORT_AND_PLAY_LABELS
-        + OBJECT_NARRATIVE_LABELS
-    )
-)
+LABELS = list(dict.fromkeys(
+    OBJECT_FURNITURE_LABELS
+    + OBJECT_ELECTRONIC_LABELS
+    + OBJECT_VEHICLE_LABELS
+    + OBJECT_ANIMAL_LABELS
+    + OBJECT_FOOD_KITCHEN_LABELS
+    + OBJECT_BAG_ACCESSORY_LABELS
+    + OBJECT_READING_LABELS
+    + OBJECT_SPORT_TOY_LABELS
+    + OBJECT_NARRATIVE_LABELS
+))
 
-LABELS = SPECTRA_OBJECT_LABELS
+SPECTRA_OBJECT_LABELS = LABELS

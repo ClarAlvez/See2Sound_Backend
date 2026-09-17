@@ -4,8 +4,8 @@ import shutil
 import pandas as pd
 
 
-INPUT_CSV = Path("data/datasets/Object/object_training_v1_coco.csv")
-OUTPUT_DIR = Path("data/kaggle/spectra_object_v1")
+INPUT_CSV = Path("data/datasets/Object/object_training_v2.csv")
+OUTPUT_DIR = Path("data/kaggle/spectra_object_v2")
 OUTPUT_IMAGES_DIR = OUTPUT_DIR / "images"
 OUTPUT_CSV = OUTPUT_DIR / "spectra_object_subcategories_debug.csv"
 
