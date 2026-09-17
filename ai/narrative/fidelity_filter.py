@@ -13,6 +13,43 @@ class FidelityFilter:
     """
 
     def __init__(self):
+        self.action_terms = {
+            "walking": [
+                "caminha",
+                "caminhando",
+                "anda",
+                "andando",
+            ],
+            "running": [
+                "corre",
+                "correndo",
+            ],
+            "standing": [
+                "em pé",
+                "de pé",
+            ],
+            "sitting": [
+                "sentado",
+                "sentada",
+                "sentados",
+                "sentadas",
+            ],
+            "dancing": [
+                "dança",
+                "dançando",
+            ],
+            "playing": [
+                "brinca",
+                "brincando",
+                "joga",
+                "jogando",
+            ],
+            "working": [
+                "trabalha",
+                "trabalhando",
+            ],
+        }
+        
         self.risky_words = {
             # Gênero/idade que o modelo não deve inventar
             # sem label específica.
@@ -56,6 +93,36 @@ class FidelityFilter:
             for label in labels
             if isinstance(label, str)
         }
+        
+        for action_label, terms in self.action_terms.items():
+            action_present = action_label in normalized_labels
+
+            mentioned = False
+
+            for term in terms:
+                normalized_term = self._normalize(term)
+
+                if " " in normalized_term:
+                    found = self._contains_phrase(
+                        normalized_description,
+                        normalized_term,
+                    )
+                else:
+                    found = self._contains_word(
+                        normalized_description,
+                        normalized_term,
+                    )
+
+                if found:
+                    mentioned = True
+                    break
+
+            if mentioned and not action_present:
+                warnings.append(
+                    "Ação inventada na descrição: "
+                    f"o texto expressa '{action_label}', "
+                    "mas essa ação não foi detectada."
+                )
 
         # Também considera labels estruturadas dentro do contexto.
         context_values = self._extract_context_values(context)

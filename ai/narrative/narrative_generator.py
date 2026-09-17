@@ -39,7 +39,7 @@ class LLMNarrativeGenerator:
         self,
         model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
         similarity_threshold: float = 0.75,
-        n_ctx: int = 4096,
+        n_ctx: int = 5480,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
     ):
@@ -48,9 +48,9 @@ class LLMNarrativeGenerator:
             n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
-            temperature=0.15,
-            top_p=0.8,
-            max_tokens=80,
+            temperature=0.0,
+            top_p=1.0,
+            max_tokens=48,
             verbose=False,
         )
 
@@ -107,6 +107,30 @@ class LLMNarrativeGenerator:
             labels=cleaned_labels,
             context=scene_context_dict,
         )
+
+        critical_warnings = [
+            warning
+            for warning in fidelity_warnings
+            if (
+                warning.startswith("Possível detalhe inventado")
+                or warning.startswith("Contradição")
+                or warning.startswith("Ação inventada")
+                or warning.startswith("Objeto inventado")
+                or warning.startswith("Sujeito inventado")
+            )
+        ]
+
+        if critical_warnings:
+            return NarrativeOutput(
+                description="",
+                start_time=narrative_input.start_time,
+                end_time=narrative_input.end_time,
+                labels=cleaned_labels,
+                scene_context=scene_context_dict,
+                skipped=True,
+                skip_reason="Descrição rejeitada por inconsistência factual.",
+                fidelity_warnings=fidelity_warnings,
+            )
 
         return NarrativeOutput(
             description=description,
@@ -262,15 +286,12 @@ class LLMNarrativeGenerator:
     ) -> Dict[str, Any]:
         return {
             "labels": cleaned_labels,
-            "scene_context": scene_context_dict,
-            "previous_description": narrative_input.previous_description or "",
-            "additional_context": narrative_input.context or {},
-            "confidence": narrative_input.confidence or {},
-            "start_time": narrative_input.start_time,
-            "end_time": narrative_input.end_time,
-            "language": "pt-BR",
-            "max_words": 25,
-            "style": "natural, objetiva, curta, adequada para audiodescrição",
+            "subjects": scene_context_dict.get("subjects", []),
+            "actions": scene_context_dict.get("actions", []),
+            "objects": scene_context_dict.get("objects", []),
+            "environment": scene_context_dict.get("environment", []),
+            "time": scene_context_dict.get("time", []),
+            "attributes": scene_context_dict.get("attributes", []),
         }
 
     def _clean_labels(self, labels: List[str]) -> List[str]:

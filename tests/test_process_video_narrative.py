@@ -4,11 +4,10 @@ from pipeline.orchestration.process_video import process_video
 VIDEO_PATH = "data/raw_videos/video_teste.mp4"
 
 SCENE_MODEL_PATH = "data/models/Scene/scene_net_best.pt"
-
 PERSON_MODEL_PATH = "data/models/Person/person_net_best.pt"
-
+OBJECT_MODEL_PATH = "data/models/Object/object_net_best.pt"
+ATMOSPHERE_MODEL_PATH = "data/models/Atmosphere/atmosphere_net_best.pt"
 ACTION_MODEL_PATH = "data/models/Actions/action_net_best.pt"
-
 
 NARRATIVE_MODEL_PATH = (
     "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf"
@@ -27,10 +26,10 @@ def main():
 
         scene_model_path=SCENE_MODEL_PATH,
         person_model_path=PERSON_MODEL_PATH,
-        object_model_path=None,
+        object_model_path=OBJECT_MODEL_PATH,
+        atmosphere_model_path=ATMOSPHERE_MODEL_PATH,
         action_model_path=ACTION_MODEL_PATH,
 
-        # Modelo Llama local
         narrative_model_path=NARRATIVE_MODEL_PATH,
 
         run_spectra=True,
@@ -38,17 +37,23 @@ def main():
         run_tts=False,
 
         spectra_scene_threshold=0.45,
-        spectra_action_threshold=0.3,
+        spectra_person_threshold=0.50,
+        spectra_object_threshold=0.35,
+        spectra_atmosphere_threshold=0.50,
+        spectra_action_threshold=0.60,
         spectra_top_k=10,
 
         use_person_cropper=True,
+        use_object_cropper=True,
+        object_cropper_confidence_threshold=0.25,
+        object_max_objects=20,
+
         use_action_model=True,
         use_action_person_cropper=True,
         action_max_people=5,
     )
 
-    print("\n")
-    print("=" * 80)
+    print("\n" + "=" * 80)
     print("SPECTRA")
     print("=" * 80)
 
@@ -66,7 +71,6 @@ def main():
             )
 
             print("Labels:")
-
             confidence = scene.get("confidence", {})
 
             for label in scene.get("labels", []):
@@ -82,8 +86,7 @@ def main():
                 else:
                     print(f"  - {label}")
 
-    print("\n")
-    print("=" * 80)
+    print("\n" + "=" * 80)
     print("NARRATIVE")
     print("=" * 80)
 
@@ -99,54 +102,16 @@ def main():
         start_time = item.get("start_time", 0.0)
         end_time = item.get("end_time", start_time)
 
-        print(
-            f"Tempo: "
-            f"{start_time:.2f}s -> "
-            f"{end_time:.2f}s"
-        )
+        print(f"Tempo: {start_time:.2f}s -> {end_time:.2f}s")
 
         description = item.get("description", "")
-
-        if description:
-            print("Texto:")
-            print(f"  {description}")
-        else:
-            print("Texto: [vazio]")
+        print("Texto:")
+        print(f"  {description}" if description else "  [vazio]")
 
         labels = item.get("labels", [])
-
         if labels:
             print("Labels utilizadas:")
             print("  " + ", ".join(labels))
-
-        if item.get("skipped"):
-            print(
-                "Ignorada:",
-                item.get("skip_reason", "sem motivo informado"),
-            )
-
-        warnings = item.get("fidelity_warnings")
-
-        if warnings:
-            print("Avisos de fidelidade:")
-
-            for warning in warnings:
-                print(f"  - {warning}")
-
-    print("\n")
-    print("=" * 80)
-    print("DESCRIÇÕES FINAIS")
-    print("=" * 80)
-
-    valid_descriptions = [
-        item["description"]
-        for item in timeline
-        if item.get("description")
-        and not item.get("skipped", False)
-    ]
-
-    for description in valid_descriptions:
-        print(f"- {description}")
 
     print("\nTeste concluído.")
 

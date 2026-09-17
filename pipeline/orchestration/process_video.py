@@ -11,7 +11,9 @@ from pipeline.video.scenes import detect_scene_changes
 
 from ai.spectra.predictor import SpectraPredictor
 from ai.spectra.Person.person_cropper import PersonCropper
+from ai.spectra.Object.object_analyzer import ObjectAnalyzer
 from pipeline.orchestration.action_postprocess import postprocess_temporal_actions
+
 try:
     from ai.spectra.Actions.person_action_analyzer import PersonActionAnalyzer
 except ImportError:
@@ -19,18 +21,13 @@ except ImportError:
 
 
 # ============================================================
-# Imports flexíveis para Narrative e TTS
+# Narrative e TTS
 # ============================================================
+
 
 def create_narrative_generator(
     model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
 ):
-    """
-    Cria o gerador narrativo.
-
-    Mantive import flexível porque o nome real do arquivo pode variar
-    entre narrative_generator.py, generator.py etc.
-    """
     try:
         from ai.narrative.narrative_generator import LLMNarrativeGenerator
     except ImportError:
@@ -57,6 +54,7 @@ def create_tts_engine(
 # Validação e diretórios
 # ============================================================
 
+
 def validate_video_path(video_path: str) -> Path:
     path = Path(video_path)
 
@@ -64,7 +62,9 @@ def validate_video_path(video_path: str) -> Path:
         raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
 
     if not path.is_file():
-        raise ValueError(f"O caminho informado não é um arquivo: {video_path}")
+        raise ValueError(
+            f"O caminho informado não é um arquivo: {video_path}"
+        )
 
     return path
 
@@ -75,67 +75,78 @@ def ensure_output_base_directory(output_base_dir: str) -> Path:
     return path
 
 
-def build_output_directories(output_base_dir: Path) -> Dict[str, Path]:
-    audio_dir = output_base_dir / "audio"
-    frames_dir = output_base_dir / "frames"
-    scene_dir = output_base_dir / "scene_data"
-    spectra_dir = output_base_dir / "spectra"
-    person_crops_dir = output_base_dir / "person_crops"
-    action_crops_dir = output_base_dir / "action_person_crops"
-    narrative_dir = output_base_dir / "narrative"
-    audio_description_dir = output_base_dir / "audio_descriptions"
-
-    for directory in [
-        audio_dir,
-        frames_dir,
-        scene_dir,
-        spectra_dir,
-        person_crops_dir,
-        action_crops_dir,
-        narrative_dir,
-        audio_description_dir,
-    ]:
-        directory.mkdir(parents=True, exist_ok=True)
-
-    return {
-        "audio_dir": audio_dir,
-        "frames_dir": frames_dir,
-        "scene_dir": scene_dir,
-        "spectra_dir": spectra_dir,
-        "person_crops_dir": person_crops_dir,
-        "action_crops_dir": action_crops_dir,
-        "narrative_dir": narrative_dir,
-        "audio_description_dir": audio_description_dir,
+def build_output_directories(
+    output_base_dir: Path,
+) -> Dict[str, Path]:
+    directories = {
+        "audio_dir": output_base_dir / "audio",
+        "frames_dir": output_base_dir / "frames",
+        "scene_dir": output_base_dir / "scene_data",
+        "spectra_dir": output_base_dir / "spectra",
+        "person_crops_dir": output_base_dir / "person_crops",
+        "object_crops_dir": output_base_dir / "object_crops",
+        "action_crops_dir": output_base_dir / "action_person_crops",
+        "narrative_dir": output_base_dir / "narrative",
+        "audio_description_dir": output_base_dir / "audio_descriptions",
     }
 
+    for directory in directories.values():
+        directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+    return directories
 
 
+def save_json(
+    data: Any,
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-def save_json(data: Any, output_path: Path) -> Path:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
+    with open(
+        output_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            data,
+            file,
+            indent=4,
+            ensure_ascii=False,
+        )
 
     return output_path
 
 
 # ============================================================
-# Etapas originais
+# Etapas de pré-processamento
 # ============================================================
 
-def process_metadata(video_path: str) -> Dict[str, Any]:
+
+def process_metadata(
+    video_path: str,
+) -> Dict[str, Any]:
     return get_video_metadata(video_path)
 
 
-def process_audio(video_path: str, audio_output_dir: Path) -> Dict[str, Any]:
+def process_audio(
+    video_path: str,
+    audio_output_dir: Path,
+) -> Dict[str, Any]:
     return extract_audio(
         video_path=video_path,
         output_dir=str(audio_output_dir),
     )
 
 
-def resolve_audio_path(audio_result: Dict[str, Any]) -> Path:
+def resolve_audio_path(
+    audio_result: Dict[str, Any],
+) -> Path:
     possible_keys = [
         "audio_path",
         "audio_file_path",
@@ -156,7 +167,8 @@ def resolve_audio_path(audio_result: Dict[str, Any]) -> Path:
             return audio_path
 
     raise ValueError(
-        "Não foi possível localizar o caminho do áudio extraído no retorno de extract_audio."
+        "Não foi possível localizar o caminho do áudio extraído "
+        "no retorno de extract_audio."
     )
 
 
@@ -217,8 +229,13 @@ def process_scenes(
 # Frames e timestamps
 # ============================================================
 
-def collect_extracted_frames(frames_result: Dict[str, Any]) -> List[Path]:
-    frames_output_dir = frames_result.get("frames_output_dir")
+
+def collect_extracted_frames(
+    frames_result: Dict[str, Any],
+) -> List[Path]:
+    frames_output_dir = frames_result.get(
+        "frames_output_dir"
+    )
 
     if not frames_output_dir:
         raise ValueError(
@@ -251,16 +268,10 @@ def infer_timestamp_from_frame_path(
     fallback_index: int,
     frame_interval_seconds: float,
 ) -> float:
-    """
-    Tenta extrair timestamp do nome do frame.
-
-    Aceita nomes como:
-    - frame_000001_t12.50.jpg
-    - qualquer_nome_t12.50.jpg
-
-    Se não encontrar, usa index * frame_interval_seconds.
-    """
-    match = re.search(r"_t(\d+(?:\.\d+)?)", frame_path.stem)
+    match = re.search(
+        r"_t(\d+(?:\.\d+)?)",
+        frame_path.stem,
+    )
 
     if match:
         return float(match.group(1))
@@ -296,7 +307,10 @@ def build_frame_records(
 # Cenas e intervalos
 # ============================================================
 
-def get_video_duration_seconds(metadata_result: Dict[str, Any]) -> Optional[float]:
+
+def get_video_duration_seconds(
+    metadata_result: Dict[str, Any],
+) -> Optional[float]:
     possible_keys = [
         "duration",
         "duration_seconds",
@@ -312,7 +326,7 @@ def get_video_duration_seconds(metadata_result: Dict[str, Any]) -> Optional[floa
         try:
             return float(value)
         except (TypeError, ValueError):
-            pass
+            continue
 
     return None
 
@@ -320,7 +334,10 @@ def get_video_duration_seconds(metadata_result: Dict[str, Any]) -> Optional[floa
 def normalize_scene_timestamps(
     scenes_result: Dict[str, Any],
 ) -> List[float]:
-    timestamps = scenes_result.get("scene_timestamps_seconds", [])
+    timestamps = scenes_result.get(
+        "scene_timestamps_seconds",
+        [],
+    )
 
     normalized = []
 
@@ -330,9 +347,7 @@ def normalize_scene_timestamps(
         except (TypeError, ValueError):
             continue
 
-    normalized = sorted(set(normalized))
-
-    return normalized
+    return sorted(set(normalized))
 
 
 def build_scene_intervals(
@@ -340,16 +355,16 @@ def build_scene_intervals(
     metadata_result: Dict[str, Any],
     fallback_end_time: float,
 ) -> List[Dict[str, float]]:
-    scene_timestamps = normalize_scene_timestamps(scenes_result)
-    video_duration = get_video_duration_seconds(metadata_result)
+    scene_timestamps = normalize_scene_timestamps(
+        scenes_result
+    )
+    video_duration = get_video_duration_seconds(
+        metadata_result
+    )
 
-    if video_duration is None:
+    if video_duration is None or video_duration <= 0:
         video_duration = fallback_end_time
 
-    if video_duration <= 0:
-        video_duration = fallback_end_time
-
-    # Garante começo em 0.
     boundaries = [0.0]
 
     for timestamp in scene_timestamps:
@@ -398,7 +413,9 @@ def select_frame_for_interval(
     candidates = [
         record
         for record in frame_records
-        if start_time <= record["timestamp"] <= end_time
+        if start_time
+        <= record["timestamp"]
+        <= end_time
     ]
 
     if not candidates:
@@ -409,16 +426,87 @@ def select_frame_for_interval(
 
     return min(
         candidates,
-        key=lambda record: abs(record["timestamp"] - midpoint),
+        key=lambda record: abs(
+            record["timestamp"] - midpoint
+        ),
     )
 
 
+def select_frame_records_for_interval(
+    frame_records: List[Dict[str, Any]],
+    start_time: float,
+    end_time: float,
+    max_frames: int = 6,
+) -> List[Dict[str, Any]]:
+    candidates = [
+        record
+        for record in frame_records
+        if start_time
+        <= record["timestamp"]
+        <= end_time
+    ]
+
+    if not candidates:
+        selected = select_frame_for_interval(
+            frame_records=frame_records,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        return [selected] if selected is not None else []
+
+    if len(candidates) <= max_frames:
+        return candidates
+
+    if max_frames <= 1:
+        midpoint = (start_time + end_time) / 2
+        return [
+            min(
+                candidates,
+                key=lambda record: abs(
+                    record["timestamp"] - midpoint
+                ),
+            )
+        ]
+
+    selected_records = []
+
+    for index in range(max_frames):
+        target_position = round(
+            index
+            * (len(candidates) - 1)
+            / (max_frames - 1)
+        )
+        selected_records.append(
+            candidates[target_position]
+        )
+
+    unique_records = []
+    seen_paths = set()
+
+    for record in selected_records:
+        frame_path = str(record["frame_path"])
+
+        if frame_path in seen_paths:
+            continue
+
+        seen_paths.add(frame_path)
+        unique_records.append(record)
+
+    return unique_records
+
+
 # ============================================================
-# Pausas de fala / inserção sugerida
+# Pausas de fala
 # ============================================================
 
-def extract_speech_pauses(whisper_result: Dict[str, Any]) -> List[Dict[str, float]]:
-    pauses = whisper_result.get("speech_pauses", [])
+
+def extract_speech_pauses(
+    whisper_result: Dict[str, Any],
+) -> List[Dict[str, float]]:
+    pauses = whisper_result.get(
+        "speech_pauses",
+        [],
+    )
 
     normalized = []
 
@@ -451,9 +539,17 @@ def find_best_pause_for_interval(
     overlapping = []
 
     for pause in pauses:
-        overlap_start = max(start_time, pause["start"])
-        overlap_end = min(end_time, pause["end"])
-        overlap_duration = overlap_end - overlap_start
+        overlap_start = max(
+            start_time,
+            pause["start"],
+        )
+        overlap_end = min(
+            end_time,
+            pause["end"],
+        )
+        overlap_duration = (
+            overlap_end - overlap_start
+        )
 
         if overlap_duration > 0:
             overlapping.append(
@@ -466,22 +562,26 @@ def find_best_pause_for_interval(
     if overlapping:
         return max(
             overlapping,
-            key=lambda item: item["overlap_duration"],
+            key=lambda item: item[
+                "overlap_duration"
+            ],
         )
 
-    # Se não houver pausa dentro da cena, usa a pausa mais próxima do início da cena.
     if not pauses:
         return None
 
     return min(
         pauses,
-        key=lambda pause: abs(pause["start"] - start_time),
+        key=lambda pause: abs(
+            pause["start"] - start_time
+        ),
     )
 
 
 # ============================================================
-# Spectra: carregar modelos
+# Spectra: criação de modelos
 # ============================================================
+
 
 def maybe_create_predictor(
     model_path: Optional[str],
@@ -498,10 +598,14 @@ def maybe_create_predictor(
     if not path.exists():
         if strict:
             raise FileNotFoundError(
-                f"Modelo {task_name} não encontrado: {model_path}"
+                f"Modelo {task_name} não encontrado: "
+                f"{model_path}"
             )
 
-        print(f"[Spectra] Modelo {task_name} não encontrado. Pulando: {model_path}")
+        print(
+            f"[Spectra] Modelo {task_name} não encontrado. "
+            f"Pulando: {model_path}"
+        )
         return None
 
     return SpectraPredictor(
@@ -511,21 +615,31 @@ def maybe_create_predictor(
         task_name=task_name,
     )
 
+
 def create_action_analyzer(
     action_model_path: Optional[str],
-    action_threshold: float = 0.3,
+    action_threshold: float = 0.6,
     action_top_k: int = 10,
     person_cropper_model_name: str = "yolov8n.pt",
     person_cropper_confidence_threshold: float = 0.35,
     max_people: int = 5,
-):
-    if action_model_path is None:
+    strict: bool = False,
+) -> Optional[PersonActionAnalyzer]:
+    if not action_model_path:
         return None
 
     action_model = Path(action_model_path)
 
     if not action_model.exists():
-        print(f"Modelo Actions não encontrado, pulando Actions: {action_model}")
+        if strict:
+            raise FileNotFoundError(
+                f"Modelo Actions não encontrado: {action_model}"
+            )
+
+        print(
+            "[Spectra] Modelo Actions não encontrado. "
+            f"Pulando: {action_model}"
+        )
         return None
 
     return PersonActionAnalyzer(
@@ -533,17 +647,109 @@ def create_action_analyzer(
         action_threshold=action_threshold,
         action_top_k=action_top_k,
         person_cropper_model_name=person_cropper_model_name,
-        person_cropper_confidence_threshold=person_cropper_confidence_threshold,
+        person_cropper_confidence_threshold=(
+            person_cropper_confidence_threshold
+        ),
         max_people=max_people,
     )
-    
+
+
+def create_object_analyzer(
+    object_model_path: Optional[str],
+    object_threshold: float = 0.35,
+    object_top_k: int = 20,
+    cropper_model_name: str = "yolov8n.pt",
+    cropper_confidence_threshold: float = 0.25,
+    max_objects: int = 20,
+    use_full_frame: bool = False,
+    strict: bool = False,
+) -> Optional[ObjectAnalyzer]:
+    if not object_model_path:
+        return None
+
+    object_model = Path(object_model_path)
+
+    if not object_model.exists():
+        if strict:
+            raise FileNotFoundError(
+                f"Modelo Object não encontrado: {object_model}"
+            )
+
+        print(
+            "[Spectra] Modelo Object não encontrado. "
+            f"Pulando ObjectCropper: {object_model}"
+        )
+        return None
+
+    return ObjectAnalyzer(
+        object_model_path=str(object_model),
+        object_threshold=object_threshold,
+        object_top_k=object_top_k,
+        cropper_model_name=cropper_model_name,
+        cropper_confidence_threshold=(
+            cropper_confidence_threshold
+        ),
+        max_objects=max_objects,
+        use_full_frame=use_full_frame,
+    )
+
+
+def create_spectra_predictors(
+    scene_model_path: Optional[str],
+    person_model_path: Optional[str],
+    object_model_path: Optional[str],
+    atmosphere_model_path: Optional[str],
+    scene_threshold: float,
+    person_threshold: float,
+    object_threshold: float,
+    atmosphere_threshold: float,
+    top_k: int,
+    strict_model_loading: bool = False,
+) -> Dict[str, Optional[SpectraPredictor]]:
+    return {
+        "scene": maybe_create_predictor(
+            model_path=scene_model_path,
+            threshold=scene_threshold,
+            top_k=top_k,
+            task_name="scene",
+            strict=strict_model_loading,
+        ),
+        "person": maybe_create_predictor(
+            model_path=person_model_path,
+            threshold=person_threshold,
+            top_k=top_k,
+            task_name="person",
+            strict=strict_model_loading,
+        ),
+        "object": maybe_create_predictor(
+            model_path=object_model_path,
+            threshold=object_threshold,
+            top_k=top_k,
+            task_name="object",
+            strict=strict_model_loading,
+        ),
+        "atmosphere": maybe_create_predictor(
+            model_path=atmosphere_model_path,
+            threshold=atmosphere_threshold,
+            top_k=top_k,
+            task_name="atmosphere",
+            strict=strict_model_loading,
+        ),
+    }
+
+
+# ============================================================
+# Spectra: análise de Person, Object e Actions por crop
+# ============================================================
+
+
 def analyze_frame_actions_with_person_crops(
     frame_path: str,
-    action_analyzer,
+    action_analyzer: Optional[PersonActionAnalyzer],
     action_crops_dir: Path,
     threshold: float = 0.3,
     top_k: int = 10,
-):
+) -> Dict[str, Any]:
     if action_analyzer is None:
         return {
             "frame_path": str(frame_path),
@@ -555,13 +761,18 @@ def analyze_frame_actions_with_person_crops(
                 "person": [],
                 "object": [],
                 "action": [],
+                "atmosphere": [],
             },
         }
 
     frame_path = Path(frame_path)
-
-    frame_crops_dir = action_crops_dir / frame_path.stem
-    frame_crops_dir.mkdir(parents=True, exist_ok=True)
+    frame_crops_dir = (
+        action_crops_dir / frame_path.stem
+    )
+    frame_crops_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     return action_analyzer.analyze_frame(
         image_path=str(frame_path),
@@ -570,60 +781,54 @@ def analyze_frame_actions_with_person_crops(
         top_k=top_k,
     )
 
-def create_spectra_predictors(
-    scene_model_path: Optional[str],
-    person_model_path: Optional[str],
-    object_model_path: Optional[str],
-    scene_threshold: float,
-    person_threshold: float,
-    object_threshold: float,
+
+def analyze_frame_objects_with_crops(
+    frame_path: Path,
+    object_analyzer: ObjectAnalyzer,
+    object_crops_output_dir: Path,
+    threshold: float,
     top_k: int,
-    strict_model_loading: bool = False,
-) -> Dict[str, Optional[SpectraPredictor]]:
-    scene_predictor = maybe_create_predictor(
-        model_path=scene_model_path,
-        threshold=scene_threshold,
-        top_k=top_k,
-        task_name="scene",
-        strict=strict_model_loading,
+) -> Dict[str, Any]:
+    frame_crops_dir = (
+        object_crops_output_dir / frame_path.stem
+    )
+    frame_crops_dir.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-    person_predictor = maybe_create_predictor(
-        model_path=person_model_path,
-        threshold=person_threshold,
+    return object_analyzer.analyze_frame(
+        image_path=str(frame_path),
+        crops_output_dir=str(frame_crops_dir),
+        threshold=threshold,
         top_k=top_k,
-        task_name="person",
-        strict=strict_model_loading,
     )
-
-    object_predictor = maybe_create_predictor(
-        model_path=object_model_path,
-        threshold=object_threshold,
-        top_k=top_k,
-        task_name="object",
-        strict=strict_model_loading,
-    )
-
-    return {
-        "scene": scene_predictor,
-        "person": person_predictor,
-        "object": object_predictor,
-    }
 
 
 # ============================================================
-# Spectra: unificar outputs
+# Spectra: unificação de outputs
 # ============================================================
 
-def extract_predictions_from_result(result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+def extract_predictions_from_result(
+    result: Optional[Dict[str, Any]],
+    include_derived: bool = True,
+) -> List[Dict[str, Any]]:
     if not result:
         return []
 
-    predictions = result.get("predictions", [])
+    candidates = list(
+        result.get("predictions", [])
+    )
 
-    valid_predictions = []
+    if include_derived:
+        candidates.extend(
+            result.get("derived_predictions", [])
+        )
 
-    for prediction in predictions:
+    best_by_label: Dict[str, Dict[str, Any]] = {}
+
+    for prediction in candidates:
         label = prediction.get("label")
         score = prediction.get("score")
 
@@ -631,31 +836,58 @@ def extract_predictions_from_result(result: Optional[Dict[str, Any]]) -> List[Di
             continue
 
         try:
-            score = float(score)
+            score_value = float(score)
         except (TypeError, ValueError):
-            score = 0.0
+            score_value = 0.0
 
-        valid_predictions.append(
-            {
+        current = best_by_label.get(label)
+
+        if (
+            current is None
+            or score_value > current["score"]
+        ):
+            normalized = {
                 "label": label,
-                "score": score,
+                "score": score_value,
             }
-        )
 
-    return valid_predictions
+            if prediction.get("derived_from"):
+                normalized["derived_from"] = (
+                    prediction["derived_from"]
+                )
+
+            best_by_label[label] = normalized
+
+    return sorted(
+        best_by_label.values(),
+        key=lambda item: item["score"],
+        reverse=True,
+    )
 
 
 def merge_spectra_predictions(
     scene_result: Optional[Dict[str, Any]],
     person_result: Optional[Dict[str, Any]],
     object_result: Optional[Dict[str, Any]],
+    atmosphere_result: Optional[Dict[str, Any]],
     action_result: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], Dict[str, float], Dict[str, Any]]:
     task_results = {
-        "scene": extract_predictions_from_result(scene_result),
-        "person": extract_predictions_from_result(person_result),
-        "object": extract_predictions_from_result(object_result),
-        "action": extract_predictions_from_result(action_result),
+        "scene": extract_predictions_from_result(
+            scene_result
+        ),
+        "person": extract_predictions_from_result(
+            person_result
+        ),
+        "object": extract_predictions_from_result(
+            object_result
+        ),
+        "atmosphere": extract_predictions_from_result(
+            atmosphere_result
+        ),
+        "action": extract_predictions_from_result(
+            action_result
+        ),
     }
 
     label_scores: Dict[str, float] = {}
@@ -666,12 +898,17 @@ def merge_spectra_predictions(
             label = prediction["label"]
             score = prediction["score"]
 
-            confidence[f"{task_name}.{label}"] = score
+            confidence[
+                f"{task_name}.{label}"
+            ] = score
 
             if label not in label_scores:
                 label_scores[label] = score
             else:
-                label_scores[label] = max(label_scores[label], score)
+                label_scores[label] = max(
+                    label_scores[label],
+                    score,
+                )
 
     labels = [
         label
@@ -690,22 +927,16 @@ def merge_spectra_predictions(
     return labels, confidence, context
 
 
-
-
 def merge_person_crop_results(
     crop_results: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     merged_scores: Dict[str, float] = {}
 
-    raw_crop_results = []
-
     for item in crop_results:
-        crop = item["crop"]
         result = item["result"]
-
-        raw_crop_results.append(item)
-
-        predictions = extract_predictions_from_result(result)
+        predictions = extract_predictions_from_result(
+            result
+        )
 
         for prediction in predictions:
             label = prediction["label"]
@@ -714,7 +945,10 @@ def merge_person_crop_results(
             if label not in merged_scores:
                 merged_scores[label] = score
             else:
-                merged_scores[label] = max(merged_scores[label], score)
+                merged_scores[label] = max(
+                    merged_scores[label],
+                    score,
+                )
 
     predictions = [
         {
@@ -729,30 +963,54 @@ def merge_person_crop_results(
     ]
 
     return {
-        "labels": [prediction["label"] for prediction in predictions],
+        "task_name": "person",
+        "source": "person_crops",
+        "labels": [
+            prediction["label"]
+            for prediction in predictions
+        ],
         "predictions": predictions,
-        "raw_crop_results": raw_crop_results,
+        "raw_crop_results": crop_results,
     }
+
 
 def analyze_frame_with_spectra(
     frame_path: Path,
-    predictors: Dict[str, Optional[SpectraPredictor]],
+    predictors: Dict[
+        str,
+        Optional[SpectraPredictor],
+    ],
     use_person_model_on_full_frame: bool = False,
     use_object_model_on_full_frame: bool = False,
     person_cropper: Optional[PersonCropper] = None,
     person_crops_output_dir: Optional[Path] = None,
+    object_analyzer: Optional[ObjectAnalyzer] = None,
+    object_crops_output_dir: Optional[Path] = None,
     action_analyzer: Optional[PersonActionAnalyzer] = None,
     action_crops_output_dir: Optional[Path] = None,
-    spectra_action_threshold: float = 0.3,
+    spectra_object_threshold: float = 0.5,
+    spectra_action_threshold: float = 0.6,
     spectra_top_k: int = 10,
+    person_max_people: int = 3,
 ) -> Dict[str, Any]:
     scene_result = None
     person_result = None
     object_result = None
+    atmosphere_result = None
     action_result = None
 
     if predictors.get("scene") is not None:
-        scene_result = predictors["scene"].predict_frame(
+        scene_result = predictors[
+            "scene"
+        ].predict_frame(
+            image_path=str(frame_path),
+            group_by_category=True,
+        )
+
+    if predictors.get("atmosphere") is not None:
+        atmosphere_result = predictors[
+            "atmosphere"
+        ].predict_frame(
             image_path=str(frame_path),
             group_by_category=True,
         )
@@ -760,22 +1018,39 @@ def analyze_frame_with_spectra(
     person_crops = []
 
     if predictors.get("person") is not None:
-        if person_cropper is not None and person_crops_output_dir is not None:
-            person_frame_crops_dir = person_crops_output_dir / frame_path.stem
-            person_frame_crops_dir.mkdir(parents=True, exist_ok=True)
+        if (
+            person_cropper is not None
+            and person_crops_output_dir is not None
+        ):
+            person_frame_crops_dir = (
+                person_crops_output_dir
+                / frame_path.stem
+            )
+            person_frame_crops_dir.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
             person_crops = person_cropper.crop_people(
                 image_path=str(frame_path),
-                output_dir=str(person_frame_crops_dir),
-                max_people=3,
+                output_dir=str(
+                    person_frame_crops_dir
+                ),
+                max_people=person_max_people,
             )
 
             crop_results = []
 
             for crop in person_crops:
-                crop_path = crop.get("crop_path") if isinstance(crop, dict) else str(crop)
+                crop_path = (
+                    crop.get("crop_path")
+                    if isinstance(crop, dict)
+                    else str(crop)
+                )
 
-                crop_result = predictors["person"].predict_frame(
+                crop_result = predictors[
+                    "person"
+                ].predict_frame(
                     image_path=crop_path,
                     group_by_category=True,
                 )
@@ -788,34 +1063,70 @@ def analyze_frame_with_spectra(
                 )
 
             if crop_results:
-                person_result = merge_person_crop_results(crop_results)
+                person_result = (
+                    merge_person_crop_results(
+                        crop_results
+                    )
+                )
 
         elif use_person_model_on_full_frame:
-            person_result = predictors["person"].predict_frame(
+            person_result = predictors[
+                "person"
+            ].predict_frame(
                 image_path=str(frame_path),
                 group_by_category=True,
             )
 
-    if predictors.get("object") is not None and use_object_model_on_full_frame:
-        object_result = predictors["object"].predict_frame(
+    if (
+        object_analyzer is not None
+        and object_crops_output_dir is not None
+    ):
+        object_result = (
+            analyze_frame_objects_with_crops(
+                frame_path=frame_path,
+                object_analyzer=object_analyzer,
+                object_crops_output_dir=(
+                    object_crops_output_dir
+                ),
+                threshold=spectra_object_threshold,
+                top_k=spectra_top_k,
+            )
+        )
+    elif (
+        predictors.get("object") is not None
+        and use_object_model_on_full_frame
+    ):
+        object_result = predictors[
+            "object"
+        ].predict_frame(
             image_path=str(frame_path),
             group_by_category=True,
         )
 
-    if action_analyzer is not None and action_crops_output_dir is not None:
-        action_result = analyze_frame_actions_with_person_crops(
-            frame_path=str(frame_path),
-            action_analyzer=action_analyzer,
-            action_crops_dir=action_crops_output_dir,
-            threshold=spectra_action_threshold,
-            top_k=spectra_top_k,
+    if (
+        action_analyzer is not None
+        and action_crops_output_dir is not None
+    ):
+        action_result = (
+            analyze_frame_actions_with_person_crops(
+                frame_path=str(frame_path),
+                action_analyzer=action_analyzer,
+                action_crops_dir=(
+                    action_crops_output_dir
+                ),
+                threshold=spectra_action_threshold,
+                top_k=spectra_top_k,
+            )
         )
 
-    labels, confidence, context = merge_spectra_predictions(
-        scene_result=scene_result,
-        person_result=person_result,
-        object_result=object_result,
-        action_result=action_result,
+    labels, confidence, context = (
+        merge_spectra_predictions(
+            scene_result=scene_result,
+            person_result=person_result,
+            object_result=object_result,
+            atmosphere_result=atmosphere_result,
+            action_result=action_result,
+        )
     )
 
     return {
@@ -827,10 +1138,17 @@ def analyze_frame_with_spectra(
             "scene": scene_result,
             "person": person_result,
             "object": object_result,
+            "atmosphere": atmosphere_result,
             "action": action_result,
             "person_crops": person_crops,
         },
     }
+
+
+# ============================================================
+# Pós-processamento temporal de Actions
+# ============================================================
+
 
 def apply_temporal_action_postprocess_to_scene(
     scene_output: Dict[str, Any],
@@ -838,131 +1156,119 @@ def apply_temporal_action_postprocess_to_scene(
     raw_frame_results = scene_output.get("raw_frame_results", [])
 
     action_frame_results = []
+    raw_action_labels = set()
 
     for frame_result in raw_frame_results:
         raw = frame_result.get("raw", {})
         action_result = raw.get("action")
 
-        if action_result:
-            action_frame_results.append(action_result)
+        if not action_result:
+            continue
+
+        action_frame_results.append(action_result)
+
+        for prediction in action_result.get("predictions", []):
+            label = prediction.get("label")
+
+            if label:
+                raw_action_labels.add(label)
 
     if not action_frame_results:
         return scene_output
 
-    temporal_action_result = postprocess_temporal_actions(action_frame_results)
-    temporal_predictions = temporal_action_result.get("predictions", [])
+    temporal_action_result = postprocess_temporal_actions(
+        action_frame_results
+    )
 
-    existing_labels = set(scene_output.get("labels", []))
-    confidence = scene_output.get("confidence", {})
+    temporal_predictions = temporal_action_result.get(
+        "predictions",
+        [],
+    )
+
+    labels = [
+        label
+        for label in scene_output.get("labels", [])
+        if label not in raw_action_labels
+    ]
+
+    confidence = {
+        key: value
+        for key, value in scene_output.get(
+            "confidence",
+            {},
+        ).items()
+        if not key.startswith("action.")
+    }
 
     for prediction in temporal_predictions:
         label = prediction.get("label")
-        score = float(prediction.get("score", 0))
+        score = float(prediction.get("score", 0.0))
 
         if not label:
             continue
 
-        existing_labels.add(label)
-        confidence_key = f"action.{label}"
-        current_score = float(confidence.get(confidence_key, 0.0))
+        labels.append(label)
+        confidence[f"action.{label}"] = round(score, 4)
 
-        confidence[confidence_key] = round(
-            max(current_score, score),
-            4,
-        )
-
-    scene_output["labels"] = list(existing_labels)
+    scene_output["labels"] = list(dict.fromkeys(labels))
     scene_output["confidence"] = confidence
     scene_output["temporal_action"] = temporal_action_result
 
+    context = scene_output.get("context", {})
+
+    if "spectra_tasks" in context:
+        context["spectra_tasks"]["action"] = temporal_predictions
+
     return scene_output
 
-def select_frame_records_for_interval(
-    frame_records: List[Dict[str, Any]],
-    start_time: float,
-    end_time: float,
-    max_frames: int = 6,
-) -> List[Dict[str, Any]]:
-    """
-    Seleciona vários frames dentro de uma cena para permitir análise temporal.
-    """
 
-    candidates = [
-        record
-        for record in frame_records
-        if start_time <= record["timestamp"] <= end_time
-    ]
+# ============================================================
+# Spectra por cena
+# ============================================================
 
-    if not candidates:
-        selected = select_frame_for_interval(
-            frame_records=frame_records,
-            start_time=start_time,
-            end_time=end_time,
-        )
-
-        return [selected] if selected is not None else []
-
-    if len(candidates) <= max_frames:
-        return candidates
-
-    if max_frames <= 1:
-        midpoint = (start_time + end_time) / 2
-
-        return [
-            min(
-                candidates,
-                key=lambda record: abs(record["timestamp"] - midpoint),
-            )
-        ]
-
-    selected_records = []
-
-    for index in range(max_frames):
-        target_position = round(
-            index * (len(candidates) - 1) / (max_frames - 1)
-        )
-
-        selected_records.append(candidates[target_position])
-
-    unique_records = []
-    seen_paths = set()
-
-    for record in selected_records:
-        frame_path = str(record["frame_path"])
-
-        if frame_path in seen_paths:
-            continue
-
-        seen_paths.add(frame_path)
-        unique_records.append(record)
-
-    return unique_records
 
 def build_spectra_outputs_for_scenes(
     frame_records: List[Dict[str, Any]],
     scene_intervals: List[Dict[str, float]],
     whisper_result: Dict[str, Any],
-    predictors: Dict[str, Optional[SpectraPredictor]],
+    predictors: Dict[
+        str,
+        Optional[SpectraPredictor],
+    ],
     use_person_model_on_full_frame: bool = False,
     use_object_model_on_full_frame: bool = False,
     person_cropper: Optional[PersonCropper] = None,
     person_crops_output_dir: Optional[Path] = None,
+    object_analyzer: Optional[ObjectAnalyzer] = None,
+    object_crops_output_dir: Optional[Path] = None,
     action_analyzer: Optional[PersonActionAnalyzer] = None,
     action_crops_output_dir: Optional[Path] = None,
-    spectra_action_threshold: float = 0.3,
+    spectra_object_threshold: float = 0.5,
+    spectra_action_threshold: float = 0.6,
     spectra_top_k: int = 10,
+    person_max_people: int = 3,
     max_temporal_frames_per_scene: int = 6,
 ) -> List[Dict[str, Any]]:
-    pauses = extract_speech_pauses(whisper_result)
+    pauses = extract_speech_pauses(
+        whisper_result
+    )
 
     spectra_outputs = []
 
     for interval in scene_intervals:
-        selected_frame_records = select_frame_records_for_interval(
-            frame_records=frame_records,
-            start_time=interval["start_time"],
-            end_time=interval["end_time"],
-            max_frames=max_temporal_frames_per_scene,
+        selected_frame_records = (
+            select_frame_records_for_interval(
+                frame_records=frame_records,
+                start_time=interval[
+                    "start_time"
+                ],
+                end_time=interval[
+                    "end_time"
+                ],
+                max_frames=(
+                    max_temporal_frames_per_scene
+                ),
+            )
         )
 
         if not selected_frame_records:
@@ -971,23 +1277,51 @@ def build_spectra_outputs_for_scenes(
         raw_frame_results = []
 
         for frame_record in selected_frame_records:
-            spectra_frame_result = analyze_frame_with_spectra(
-                frame_path=frame_record["frame_path"],
-                predictors=predictors,
-                use_person_model_on_full_frame=use_person_model_on_full_frame,
-                use_object_model_on_full_frame=use_object_model_on_full_frame,
-                person_cropper=person_cropper,
-                person_crops_output_dir=person_crops_output_dir,
-                action_analyzer=action_analyzer,
-                action_crops_output_dir=action_crops_output_dir,
-                spectra_action_threshold=spectra_action_threshold,
-                spectra_top_k=spectra_top_k,
+            spectra_frame_result = (
+                analyze_frame_with_spectra(
+                    frame_path=frame_record[
+                        "frame_path"
+                    ],
+                    predictors=predictors,
+                    use_person_model_on_full_frame=(
+                        use_person_model_on_full_frame
+                    ),
+                    use_object_model_on_full_frame=(
+                        use_object_model_on_full_frame
+                    ),
+                    person_cropper=person_cropper,
+                    person_crops_output_dir=(
+                        person_crops_output_dir
+                    ),
+                    object_analyzer=object_analyzer,
+                    object_crops_output_dir=(
+                        object_crops_output_dir
+                    ),
+                    action_analyzer=action_analyzer,
+                    action_crops_output_dir=(
+                        action_crops_output_dir
+                    ),
+                    spectra_object_threshold=(
+                        spectra_object_threshold
+                    ),
+                    spectra_action_threshold=(
+                        spectra_action_threshold
+                    ),
+                    spectra_top_k=spectra_top_k,
+                    person_max_people=person_max_people,
+                )
             )
 
-            spectra_frame_result["timestamp"] = frame_record["timestamp"]
-            raw_frame_results.append(spectra_frame_result)
+            spectra_frame_result[
+                "timestamp"
+            ] = frame_record["timestamp"]
+            raw_frame_results.append(
+                spectra_frame_result
+            )
 
-        main_frame_result = raw_frame_results[len(raw_frame_results) // 2]
+        main_frame_result = raw_frame_results[
+            len(raw_frame_results) // 2
+        ]
 
         best_pause = find_best_pause_for_interval(
             pauses=pauses,
@@ -995,16 +1329,28 @@ def build_spectra_outputs_for_scenes(
             end_time=interval["end_time"],
         )
 
-        context = dict(main_frame_result["context"])
-        context["frame_path"] = main_frame_result["frame_path"]
-        context["scene_index"] = interval["scene_index"]
-        context["selected_frame_timestamp"] = main_frame_result["timestamp"]
-        context["temporal_frame_count"] = len(raw_frame_results)
+        context = dict(
+            main_frame_result["context"]
+        )
+        context["frame_path"] = (
+            main_frame_result["frame_path"]
+        )
+        context["scene_index"] = (
+            interval["scene_index"]
+        )
+        context[
+            "selected_frame_timestamp"
+        ] = main_frame_result["timestamp"]
+        context["temporal_frame_count"] = len(
+            raw_frame_results
+        )
         context["temporal_frame_paths"] = [
             frame_result["frame_path"]
             for frame_result in raw_frame_results
         ]
-        context["raw_outputs"] = main_frame_result.get("raw", {})
+        context["raw_outputs"] = (
+            main_frame_result.get("raw", {})
+        )
 
         if best_pause:
             context["suggested_pause"] = best_pause
@@ -1012,21 +1358,31 @@ def build_spectra_outputs_for_scenes(
         scene_output = {
             "start_time": interval["start_time"],
             "end_time": interval["end_time"],
-            "labels": main_frame_result["labels"],
-            "confidence": main_frame_result["confidence"],
+            "labels": main_frame_result[
+                "labels"
+            ],
+            "confidence": main_frame_result[
+                "confidence"
+            ],
             "context": context,
             "raw_frame_results": raw_frame_results,
         }
 
-        scene_output = apply_temporal_action_postprocess_to_scene(scene_output)
+        scene_output = (
+            apply_temporal_action_postprocess_to_scene(
+                scene_output
+            )
+        )
 
         spectra_outputs.append(scene_output)
 
     return spectra_outputs
 
+
 # ============================================================
 # Narrative
 # ============================================================
+
 
 def generate_narrative_timeline(
     spectra_outputs: List[Dict[str, Any]],
@@ -1042,16 +1398,22 @@ def generate_narrative_timeline(
 
 
 # ============================================================
-# Audio Description / TTS
+# TTS
 # ============================================================
 
-def safe_time_for_filename(value: Any) -> str:
+
+def safe_time_for_filename(
+    value: Any,
+) -> str:
     try:
         number = float(value)
     except (TypeError, ValueError):
         number = 0.0
 
-    return f"{number:08.2f}".replace(".", "_")
+    return f"{number:08.2f}".replace(
+        ".",
+        "_",
+    )
 
 
 def generate_audio_description_files(
@@ -1067,14 +1429,25 @@ def generate_audio_description_files(
 
     audio_outputs = []
 
-    for index, item in enumerate(narrative_timeline):
-        description = item.get("description", "")
+    for index, item in enumerate(
+        narrative_timeline
+    ):
+        description = item.get(
+            "description",
+            "",
+        )
 
         if not description:
             continue
 
-        start_time = item.get("start_time", 0.0)
-        end_time = item.get("end_time", start_time)
+        start_time = item.get(
+            "start_time",
+            0.0,
+        )
+        end_time = item.get(
+            "end_time",
+            start_time,
+        )
 
         file_name = "ad_{:04d}_{}_{}.wav".format(
             index,
@@ -1095,7 +1468,9 @@ def generate_audio_description_files(
                 "start_time": start_time,
                 "end_time": end_time,
                 "description": description,
-                "audio_path": str(saved_output or output_path),
+                "audio_path": str(
+                    saved_output or output_path
+                ),
                 "source_narrative": item,
             }
         )
@@ -1106,6 +1481,7 @@ def generate_audio_description_files(
 # ============================================================
 # Resultado final
 # ============================================================
+
 
 def build_processing_result(
     video_path: Path,
@@ -1121,12 +1497,16 @@ def build_processing_result(
 ) -> Dict[str, Any]:
     return {
         "source_video_name": video_path.name,
-        "source_video_path": str(video_path.resolve()),
+        "source_video_path": str(
+            video_path.resolve()
+        ),
         "metadata": metadata_result,
         "audio": {
             "extraction": audio_result,
             "speech_analysis": whisper_result,
-            "description_generation": audio_description_outputs,
+            "description_generation": (
+                audio_description_outputs
+            ),
         },
         "frames": frames_result,
         "scenes": scenes_result,
@@ -1143,6 +1523,7 @@ def build_processing_result(
 # ============================================================
 # Pipeline principal
 # ============================================================
+
 
 def process_video(
     video_path: str,
@@ -1164,30 +1545,46 @@ def process_video(
     refine_with_detected_language: bool = True,
 
     # Spectra
-    scene_model_path: Optional[str] = "data/models/spectra_scene/scene_net_best.pt",
+    scene_model_path: Optional[str] = (
+        "data/models/Scene/scene_net_best.pt"
+    ),
     person_model_path: Optional[str] = None,
     object_model_path: Optional[str] = None,
+    atmosphere_model_path: Optional[str] = None,
     action_model_path: Optional[str] = None,
     spectra_scene_threshold: float = 0.45,
     spectra_person_threshold: float = 0.50,
     spectra_object_threshold: float = 0.50,
-    spectra_action_threshold: float = 0.30,
+    spectra_atmosphere_threshold: float = 0.50,
+    spectra_action_threshold: float = 0.60,
     spectra_top_k: int = 12,
     max_temporal_frames_per_scene: int = 6,
     strict_model_loading: bool = False,
 
+    # Person
     use_person_model_on_full_frame: bool = False,
-    use_object_model_on_full_frame: bool = False,
     use_person_cropper: bool = True,
     person_cropper_model_name: str = "yolov8n.pt",
     person_cropper_confidence_threshold: float = 0.35,
+    person_max_people: int = 3,
 
+    # Object
+    use_object_model_on_full_frame: bool = False,
+    use_object_cropper: bool = True,
+    object_cropper_model_name: str = "yolov8n.pt",
+    object_cropper_confidence_threshold: float = 0.25,
+    object_max_objects: int = 20,
+
+    # Actions
     use_action_model: bool = True,
     use_action_person_cropper: bool = True,
     action_max_people: int = 5,
 
     # Narrative
-    narrative_model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
+    narrative_model_path: str = (
+        "data/models/llama/"
+        "Llama-3.2-1B-Instruct-Q6_K_L.gguf"
+    ),
 
     # TTS
     tts_rate: int = 170,
@@ -1199,23 +1596,28 @@ def process_video(
     run_tts: bool = True,
 ) -> Dict[str, Any]:
     """
-    Pipeline final See2Sound.
+    Pipeline principal do See2Sound.
 
-    Etapas:
-    1. Valida vídeo.
-    2. Extrai metadata.
-    3. Extrai áudio.
-    4. Analisa fala/pausas com Whisper.
-    5. Extrai frames.
-    6. Detecta cenas.
-    7. Executa Spectra Scene, Person, Object e Actions.
-    8. Unifica labels da Spectra.
-    9. Envia labels para Narrative.
-    10. Gera arquivos de áudio com TTS.
+    Fluxo visual:
+    Scene -> frame completo
+    Atmosphere -> frame completo
+    Person -> crops de pessoas por YOLO
+    Object -> crops de objetos por YOLO + ObjectNet
+    Actions -> crops de pessoas + pós-processamento temporal
+
+    As saídas são unificadas antes de seguir para Narrative.
     """
-    validated_video_path = validate_video_path(video_path)
-    validated_output_base_dir = ensure_output_base_directory(output_base_dir)
-    output_dirs = build_output_directories(validated_output_base_dir)
+    validated_video_path = validate_video_path(
+        video_path
+    )
+    validated_output_base_dir = (
+        ensure_output_base_directory(
+            output_base_dir
+        )
+    )
+    output_dirs = build_output_directories(
+        validated_output_base_dir
+    )
 
     metadata_result = process_metadata(
         str(validated_video_path)
@@ -1223,43 +1625,62 @@ def process_video(
 
     audio_result = process_audio(
         video_path=str(validated_video_path),
-        audio_output_dir=output_dirs["audio_dir"],
+        audio_output_dir=output_dirs[
+            "audio_dir"
+        ],
     )
 
     whisper_result = analyze_extracted_audio(
         audio_result=audio_result,
         whisper_model_size=whisper_model_size,
         whisper_device=whisper_device,
-        whisper_compute_type=whisper_compute_type,
+        whisper_compute_type=(
+            whisper_compute_type
+        ),
         whisper_language=whisper_language,
         whisper_beam_size=whisper_beam_size,
         whisper_vad_filter=whisper_vad_filter,
         min_pause_duration=min_pause_duration,
-        refine_with_detected_language=refine_with_detected_language,
+        refine_with_detected_language=(
+            refine_with_detected_language
+        ),
     )
 
     frames_result = process_frames(
         video_path=str(validated_video_path),
-        frames_output_dir=output_dirs["frames_dir"],
-        interval_seconds=frame_interval_seconds,
+        frames_output_dir=output_dirs[
+            "frames_dir"
+        ],
+        interval_seconds=(
+            frame_interval_seconds
+        ),
     )
 
     scenes_result = process_scenes(
         video_path=str(validated_video_path),
         threshold=scene_threshold,
-        min_scene_gap_seconds=min_scene_gap_seconds,
+        min_scene_gap_seconds=(
+            min_scene_gap_seconds
+        ),
     )
 
-    frame_paths = collect_extracted_frames(frames_result)
+    frame_paths = collect_extracted_frames(
+        frames_result
+    )
     frame_records = build_frame_records(
         frame_paths=frame_paths,
-        frame_interval_seconds=frame_interval_seconds,
+        frame_interval_seconds=(
+            frame_interval_seconds
+        ),
     )
 
     fallback_end_time = 0.0
 
     if frame_records:
-        fallback_end_time = frame_records[-1]["timestamp"] + frame_interval_seconds
+        fallback_end_time = (
+            frame_records[-1]["timestamp"]
+            + frame_interval_seconds
+        )
 
     scene_intervals = build_scene_intervals(
         scenes_result=scenes_result,
@@ -1270,93 +1691,223 @@ def process_video(
     spectra_outputs: List[Dict[str, Any]] = []
 
     person_cropper = None
+    object_analyzer = None
     action_analyzer = None
 
-    if run_spectra and use_person_cropper:
+    if (
+        run_spectra
+        and use_person_cropper
+        and person_model_path
+    ):
         person_cropper = PersonCropper(
             model_name=person_cropper_model_name,
-            confidence_threshold=person_cropper_confidence_threshold,
+            confidence_threshold=(
+                person_cropper_confidence_threshold
+            ),
         )
 
-    if run_spectra and use_action_model and use_action_person_cropper:
+    if run_spectra and use_object_cropper:
+        object_analyzer = create_object_analyzer(
+            object_model_path=object_model_path,
+            object_threshold=(
+                spectra_object_threshold
+            ),
+            object_top_k=spectra_top_k,
+            cropper_model_name=(
+                object_cropper_model_name
+            ),
+            cropper_confidence_threshold=(
+                object_cropper_confidence_threshold
+            ),
+            max_objects=object_max_objects,
+            use_full_frame=(
+                use_object_model_on_full_frame
+            ),
+            strict=strict_model_loading,
+        )
+
+    if (
+        run_spectra
+        and use_action_model
+        and use_action_person_cropper
+    ):
         action_analyzer = create_action_analyzer(
             action_model_path=action_model_path,
-            action_threshold=spectra_action_threshold,
+            action_threshold=(
+                spectra_action_threshold
+            ),
             action_top_k=spectra_top_k,
-            person_cropper_model_name=person_cropper_model_name,
-            person_cropper_confidence_threshold=person_cropper_confidence_threshold,
+            person_cropper_model_name=(
+                person_cropper_model_name
+            ),
+            person_cropper_confidence_threshold=(
+                person_cropper_confidence_threshold
+            ),
             max_people=action_max_people,
+            strict=strict_model_loading,
         )
 
     if run_spectra:
+        # Evita carregar ObjectNet duas vezes quando ObjectAnalyzer
+        # já é responsável pela inferência por crops.
+        direct_object_model_path = (
+            None
+            if object_analyzer is not None
+            else object_model_path
+        )
+
         predictors = create_spectra_predictors(
             scene_model_path=scene_model_path,
             person_model_path=person_model_path,
-            object_model_path=object_model_path,
-            scene_threshold=spectra_scene_threshold,
-            person_threshold=spectra_person_threshold,
-            object_threshold=spectra_object_threshold,
+            object_model_path=(
+                direct_object_model_path
+            ),
+            atmosphere_model_path=(
+                atmosphere_model_path
+            ),
+            scene_threshold=(
+                spectra_scene_threshold
+            ),
+            person_threshold=(
+                spectra_person_threshold
+            ),
+            object_threshold=(
+                spectra_object_threshold
+            ),
+            atmosphere_threshold=(
+                spectra_atmosphere_threshold
+            ),
             top_k=spectra_top_k,
-            strict_model_loading=strict_model_loading,
+            strict_model_loading=(
+                strict_model_loading
+            ),
         )
 
-        if not any(predictors.values()) and action_analyzer is None:
-            print("[Spectra] Nenhum modelo visual carregado. Pulando análise visual.")
-            spectra_outputs = []
+        has_visual_model = any(
+            predictor is not None
+            for predictor in predictors.values()
+        )
+
+        if (
+            not has_visual_model
+            and object_analyzer is None
+            and action_analyzer is None
+        ):
+            print(
+                "[Spectra] Nenhum modelo visual carregado. "
+                "Pulando análise visual."
+            )
         else:
-            spectra_outputs = build_spectra_outputs_for_scenes(
-                frame_records=frame_records,
-                scene_intervals=scene_intervals,
-                whisper_result=whisper_result,
-                predictors=predictors,
-                use_person_model_on_full_frame=use_person_model_on_full_frame,
-                use_object_model_on_full_frame=use_object_model_on_full_frame,
-                person_cropper=person_cropper,
-                person_crops_output_dir=output_dirs["person_crops_dir"],
-                action_analyzer=action_analyzer,
-                action_crops_output_dir=output_dirs["action_crops_dir"],
-                spectra_action_threshold=spectra_action_threshold,
-                spectra_top_k=spectra_top_k,
-                max_temporal_frames_per_scene=max_temporal_frames_per_scene,
+            spectra_outputs = (
+                build_spectra_outputs_for_scenes(
+                    frame_records=frame_records,
+                    scene_intervals=scene_intervals,
+                    whisper_result=whisper_result,
+                    predictors=predictors,
+                    use_person_model_on_full_frame=(
+                        use_person_model_on_full_frame
+                    ),
+                    use_object_model_on_full_frame=(
+                        use_object_model_on_full_frame
+                    ),
+                    person_cropper=person_cropper,
+                    person_crops_output_dir=(
+                        output_dirs[
+                            "person_crops_dir"
+                        ]
+                    ),
+                    object_analyzer=object_analyzer,
+                    object_crops_output_dir=(
+                        output_dirs[
+                            "object_crops_dir"
+                        ]
+                    ),
+                    action_analyzer=action_analyzer,
+                    action_crops_output_dir=(
+                        output_dirs[
+                            "action_crops_dir"
+                        ]
+                    ),
+                    spectra_object_threshold=(
+                        spectra_object_threshold
+                    ),
+                    spectra_action_threshold=(
+                        spectra_action_threshold
+                    ),
+                    spectra_top_k=spectra_top_k,
+                    person_max_people=person_max_people,
+                    max_temporal_frames_per_scene=(
+                        max_temporal_frames_per_scene
+                    ),
+                )
             )
 
     narrative_timeline: List[Dict[str, Any]] = []
 
     if run_narrative:
-        narrative_timeline = generate_narrative_timeline(
-            spectra_outputs=spectra_outputs,
-            narrative_model_path=narrative_model_path,
+        narrative_timeline = (
+            generate_narrative_timeline(
+                spectra_outputs=spectra_outputs,
+                narrative_model_path=(
+                    narrative_model_path
+                ),
+            )
         )
 
-    audio_description_outputs: List[Dict[str, Any]] = []
+    audio_description_outputs: List[
+        Dict[str, Any]
+    ] = []
 
     if run_tts:
-        audio_description_outputs = generate_audio_description_files(
-            narrative_timeline=narrative_timeline,
-            output_dir=output_dirs["audio_description_dir"],
-            tts_rate=tts_rate,
-            tts_volume=tts_volume,
+        audio_description_outputs = (
+            generate_audio_description_files(
+                narrative_timeline=(
+                    narrative_timeline
+                ),
+                output_dir=output_dirs[
+                    "audio_description_dir"
+                ],
+                tts_rate=tts_rate,
+                tts_volume=tts_volume,
+            )
         )
 
     spectra_json_path = save_json(
         data=spectra_outputs,
-        output_path=output_dirs["spectra_dir"] / "spectra_outputs.json",
+        output_path=(
+            output_dirs["spectra_dir"]
+            / "spectra_outputs.json"
+        ),
     )
 
     narrative_json_path = save_json(
         data=narrative_timeline,
-        output_path=output_dirs["narrative_dir"] / "narrative_timeline.json",
+        output_path=(
+            output_dirs["narrative_dir"]
+            / "narrative_timeline.json"
+        ),
     )
 
     audio_descriptions_json_path = save_json(
         data=audio_description_outputs,
-        output_path=output_dirs["audio_description_dir"] / "audio_description_outputs.json",
+        output_path=(
+            output_dirs[
+                "audio_description_dir"
+            ]
+            / "audio_description_outputs.json"
+        ),
     )
 
     saved_artifacts = {
-        "spectra_outputs_json": str(spectra_json_path),
-        "narrative_timeline_json": str(narrative_json_path),
-        "audio_description_outputs_json": str(audio_descriptions_json_path),
+        "spectra_outputs_json": str(
+            spectra_json_path
+        ),
+        "narrative_timeline_json": str(
+            narrative_json_path
+        ),
+        "audio_description_outputs_json": str(
+            audio_descriptions_json_path
+        ),
     }
 
     return build_processing_result(
@@ -1368,6 +1919,8 @@ def process_video(
         scenes_result=scenes_result,
         spectra_outputs=spectra_outputs,
         narrative_timeline=narrative_timeline,
-        audio_description_outputs=audio_description_outputs,
+        audio_description_outputs=(
+            audio_description_outputs
+        ),
         saved_artifacts=saved_artifacts,
     )

@@ -15,7 +15,7 @@ class LlamaCppClient:
     def __init__(
         self,
         model_path: str = "models/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
-        n_ctx: int = 4096,
+        n_ctx: int = 5480,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
         temperature: float = 0.55,

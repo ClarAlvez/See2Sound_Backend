@@ -15,3 +15,4 @@ scikit-learn
 fiftyone
 pyttsx3
 scipy
+ultralytics

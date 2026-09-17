@@ -101,19 +101,6 @@ def postprocess_temporal_actions(
             }
         )
 
-    elif has_moving and has_exercising:
-        final_predictions.append(
-            {
-                "label": "running",
-                "score": 0.6,
-                "source": "temporal_rule",
-                "frame_count": min(
-                    total_frames,
-                    label_counts["moving"] + label_counts["exercising"],
-                ),
-            }
-        )
-
     final_predictions = deduplicate_predictions(final_predictions)
 
     has_running = any(

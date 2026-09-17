@@ -4,18 +4,9 @@ from ai.narrative.data_models import SceneContext
 
 
 class SceneContextBuilder:
-    """
-    Organiza labels cruas da Spectra em categorias narrativas.
-
-    Isso ajuda o modelo local a gerar frases mais fiéis
-    e menos aleatórias.
-    """
+    """Organiza labels cruas da Spectra em categorias narrativas."""
 
     def __init__(self):
-        # ---------------------------------------------------------
-        # Sujeitos
-        # ---------------------------------------------------------
-
         self.subject_labels = {
             "person",
             "man",
@@ -29,10 +20,6 @@ class SceneContextBuilder:
             "cat",
             "animal",
         }
-
-        # ---------------------------------------------------------
-        # Ações
-        # ---------------------------------------------------------
 
         self.action_labels = {
             "running",
@@ -55,51 +42,52 @@ class SceneContextBuilder:
             "sleeping",
             "dancing",
             "swimming",
-
-            # Movimento genérico
             "moving",
         }
 
-        # ---------------------------------------------------------
-        # Ambientes
-        # ---------------------------------------------------------
-
         self.environment_labels = {
+            "indoor",
+            "outdoor",
+            "room",
             "street",
             "road",
             "city",
-            "room",
-            "house",
-            "park",
-            "forest",
+            "desert",
             "beach",
+            "ocean",
+            "forest",
+            "mountain",
+            "park",
+            "field",
             "school",
-            "hospital",
-            "restaurant",
-            "store",
-            "office",
+            "classroom",
             "kitchen",
             "bedroom",
+            "living_room",
+            "office",
+            "office_room",
+            "office_cubicles",
+            "home_office",
+            "conference_room",
+            "restaurant",
+            "restaurant_indoor",
+            "fastfood_restaurant",
+            "cafeteria",
+            "dining_room",
+            "restaurant_patio",
+            "store",
+            "hospital",
+            "sports_field",
+            "house",
             "bathroom",
-            "car",
-            "bus",
-            "train",
             "building",
             "sidewalk",
-
-            # Novos ambientes usados pela Spectra
-            "field",
-            "outdoor",
-            "indoor",
         }
-
-        # ---------------------------------------------------------
-        # Tempo
-        # ---------------------------------------------------------
 
         self.time_labels = {
             "day",
             "night",
+            "dawn_dusk",
             "morning",
             "afternoon",
             "evening",
@@ -107,121 +95,122 @@ class SceneContextBuilder:
             "sunrise",
         }
 
-        # ---------------------------------------------------------
-        # Atributos
-        # ---------------------------------------------------------
-
         self.attribute_labels = {
-            # Ambiente
             "dark",
             "bright",
+            "low_light",
+            "clear_weather",
+            "sunny",
+            "cloudy",
+            "foggy",
+            "rainy",
+            "snowy",
             "empty",
             "crowded",
-
-            # Cores genéricas
             "red",
             "blue",
             "green",
             "black",
             "white",
-
-            # Tamanho / estado
             "large",
             "small",
             "old",
             "new",
             "open",
             "closed",
-
-            # Roupas
             "black_clothes",
             "white_clothes",
             "red_clothes",
             "blue_clothes",
             "green_clothes",
             "yellow_clothes",
-
-            # Aparência
             "glasses",
             "short_hair",
             "long_hair",
-
-            # Movimento
             "fast_motion",
             "slow_motion",
         }
 
-        # ---------------------------------------------------------
-        # Objetos
-        # ---------------------------------------------------------
-
         self.object_labels = {
             "car",
             "bus",
+            "train",
+            "boat",
+            "airplane",
+            "truck",
             "bike",
             "bicycle",
             "motorcycle",
             "phone",
             "book",
+            "document",
             "table",
             "chair",
+            "sofa",
+            "bed",
             "door",
             "window",
             "bag",
+            "backpack",
+            "handbag",
+            "suitcase",
             "ball",
             "computer",
-            "laptop",
+            "screen",
+            "television",
+            "keyboard",
+            "mouse",
+            "remote",
             "bottle",
             "cup",
+            "bowl",
+            "plate",
+            "fork",
+            "spoon",
+            "knife",
             "food",
+            "fruit",
+            "toy",
+            "umbrella",
+            "kite",
+            "skateboard",
+            "surfboard",
+            "sports_racket",
             "tree",
             "traffic light",
         }
 
     def build(self, labels: List[str]) -> SceneContext:
         cleaned_labels = self._clean_labels(labels)
-
-        context = SceneContext(
-            raw_labels=cleaned_labels,
-        )
+        context = SceneContext(raw_labels=cleaned_labels)
 
         for label in cleaned_labels:
             categorized = False
 
-            # Sujeitos
             if label in self.subject_labels:
                 context.subjects.append(label)
                 categorized = True
 
-            # Ações
             if label in self.action_labels:
                 context.actions.append(label)
                 categorized = True
 
-            # Ambiente
             if label in self.environment_labels:
                 context.environment.append(label)
                 categorized = True
 
-            # Tempo
             if label in self.time_labels:
                 context.time.append(label)
                 categorized = True
 
-            # Atributos
             if label in self.attribute_labels:
                 context.attributes.append(label)
                 categorized = True
 
-            # Objetos
-            if (
-                label in self.object_labels
-                and label not in context.environment
-            ):
+            if label in self.object_labels and label not in context.environment:
                 context.objects.append(label)
                 categorized = True
 
-            # Tudo que não foi reconhecido
             if not categorized:
                 context.unknown.append(label)
 
