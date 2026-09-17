@@ -545,7 +545,7 @@ def create_k_fold_indices(dataset_size, folds, seed):
         current_index += fold_size
 
     return fold_indices
-
+                                                                                                                                            
 
 def run_epoch(model, loader, criterion, device, optimizer=None):
     is_training = optimizer is not None
