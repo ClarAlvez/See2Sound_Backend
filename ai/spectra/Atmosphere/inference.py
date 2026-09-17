@@ -10,6 +10,34 @@ from ai.spectra.Atmosphere.model import SpectraAtmosphereNet
 from ai.spectra.data.transforms import get_test_transforms
 
 
+TIME_OF_DAY_LABELS = [
+    "day",
+    "night",
+    "dawn_dusk",
+]
+
+
+LIGHTING_LABELS = [
+    "bright",
+    "low_light",
+]
+
+
+WEATHER_LABELS = [
+    "clear_weather",
+    "sunny",
+    "cloudy",
+    "foggy",
+    "rainy",
+    "snowy",
+]
+
+
+EXCLUSIVE_GROUPS = [
+    TIME_OF_DAY_LABELS,
+]
+
+
 class AtmospherePredictor:
     def __init__(
         self,
@@ -21,7 +49,12 @@ class AtmospherePredictor:
         self.model_path = Path(model_path)
         self.threshold = threshold
         self.top_k = top_k
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.device = device or (
+            "cuda"
+            if torch.cuda.is_available()
+            else "cpu"
+        )
 
         if not self.model_path.exists():
             raise FileNotFoundError(
@@ -33,15 +66,39 @@ class AtmospherePredictor:
             map_location=self.device,
         )
 
-        self.labels = checkpoint.get("labels", LABELS)
-        self.config = checkpoint.get("config", {})
+        self.labels = checkpoint.get(
+            "labels",
+            LABELS,
+        )
 
-        self.image_size = self.config.get("image_size", 224)
-        self.dropout_rate = self.config.get("dropout_rate", 0.3)
-        self.backbone_name = self.config.get("backbone_name", "resnet18")
-        self.freeze_backbone = self.config.get("freeze_backbone", False)
+        self.config = checkpoint.get(
+            "config",
+            {},
+        )
 
-        self.transform = get_test_transforms(self.image_size)
+        self.image_size = self.config.get(
+            "image_size",
+            224,
+        )
+
+        self.dropout_rate = self.config.get(
+            "dropout_rate",
+            0.3,
+        )
+
+        self.backbone_name = self.config.get(
+            "backbone_name",
+            "resnet18",
+        )
+
+        self.freeze_backbone = self.config.get(
+            "freeze_backbone",
+            False,
+        )
+
+        self.transform = get_test_transforms(
+            self.image_size
+        )
 
         self.model = SpectraAtmosphereNet(
             output_size=len(self.labels),
@@ -52,7 +109,10 @@ class AtmospherePredictor:
             freeze_backbone=self.freeze_backbone,
         ).to(self.device)
 
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.load_state_dict(
+            checkpoint["model_state_dict"]
+        )
+
         self.model.eval()
 
     def predict_frame(
@@ -62,13 +122,29 @@ class AtmospherePredictor:
         top_k=None,
         group_by_category=False,
     ):
-        image_path = Path(image_path)
+        image_path = Path(
+            image_path
+        )
 
-        image = self.load_image(image_path)
+        if not image_path.exists():
+            raise FileNotFoundError(
+                f"Imagem não encontrada: {image_path}"
+            )
+
+        image = self.load_image(
+            image_path
+        )
 
         with torch.no_grad():
-            logits = self.model(image)
-            probabilities = torch.sigmoid(logits).squeeze(0).cpu()
+            logits = self.model(
+                image
+            )
+
+            probabilities = (
+                torch.sigmoid(logits)
+                .squeeze(0)
+                .cpu()
+            )
 
         predictions = self.select_predictions(
             probabilities=probabilities,
@@ -76,15 +152,25 @@ class AtmospherePredictor:
             top_k=top_k,
         )
 
+        effective_threshold = (
+            self.threshold
+            if threshold is None
+            else threshold
+        )
+
         result = {
-            "frame_path": str(image_path),
+            "frame_path": str(
+                image_path
+            ),
             "task_name": "atmosphere",
-            "threshold": self.threshold if threshold is None else threshold,
+            "threshold": effective_threshold,
             "predictions": predictions,
         }
 
         if group_by_category:
-            result["grouped_predictions"] = self.group_predictions(
+            result[
+                "grouped_predictions"
+            ] = self.group_predictions(
                 predictions=predictions,
             )
 
@@ -93,26 +179,94 @@ class AtmospherePredictor:
     def predict_top_labels(
         self,
         image_path,
-        top_k=10,
+        top_k=11,
+        group_by_category=False,
     ):
-        result = self.predict_frame(
-            image_path=image_path,
-            threshold=0.0,
-            top_k=top_k,
+        image_path = Path(
+            image_path
         )
 
-        return {
-            "frame_path": result["frame_path"],
+        image = self.load_image(
+            image_path
+        )
+
+        with torch.no_grad():
+            logits = self.model(
+                image
+            )
+
+            probabilities = (
+                torch.sigmoid(logits)
+                .squeeze(0)
+                .cpu()
+            )
+
+        predictions = []
+
+        for label, score in zip(
+            self.labels,
+            probabilities,
+        ):
+            predictions.append(
+                {
+                    "label": label,
+                    "score": round(
+                        float(score),
+                        4,
+                    ),
+                }
+            )
+
+        predictions.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+
+        predictions = self.apply_exclusive_groups(
+            predictions
+        )
+
+        if top_k is not None:
+            predictions = predictions[
+                :top_k
+            ]
+
+        result = {
+            "frame_path": str(
+                image_path
+            ),
             "task_name": "atmosphere",
-            "top_predictions": result["predictions"],
+            "top_predictions": predictions,
         }
 
-    def load_image(self, image_path):
-        image = Image.open(image_path).convert("RGB")
+        if group_by_category:
+            result[
+                "grouped_predictions"
+            ] = self.group_predictions(
+                predictions
+            )
 
-        image_tensor = self.transform(image)
-        image_tensor = image_tensor.unsqueeze(0)
-        image_tensor = image_tensor.to(self.device)
+        return result
+
+    def load_image(
+        self,
+        image_path,
+    ):
+        image = Image.open(
+            image_path
+        ).convert(
+            "RGB"
+        )
+
+        image_tensor = self.transform(
+            image
+        )
+
+        image_tensor = (
+            image_tensor
+            .unsqueeze(0)
+            .to(self.device)
+        )
 
         return image_tensor
 
@@ -122,13 +276,27 @@ class AtmospherePredictor:
         threshold=None,
         top_k=None,
     ):
-        threshold = self.threshold if threshold is None else threshold
-        top_k = self.top_k if top_k is None else top_k
+        threshold = (
+            self.threshold
+            if threshold is None
+            else threshold
+        )
+
+        top_k = (
+            self.top_k
+            if top_k is None
+            else top_k
+        )
 
         values = []
 
-        for label, score in zip(self.labels, probabilities):
-            score_value = float(score)
+        for label, score in zip(
+            self.labels,
+            probabilities,
+        ):
+            score_value = float(
+                score
+            )
 
             if score_value < threshold:
                 continue
@@ -136,7 +304,10 @@ class AtmospherePredictor:
             values.append(
                 {
                     "label": label,
-                    "score": round(score_value, 4),
+                    "score": round(
+                        score_value,
+                        4,
+                    ),
                 }
             )
 
@@ -145,26 +316,21 @@ class AtmospherePredictor:
             reverse=True,
         )
 
-        values = self.apply_exclusive_groups(values)
+        values = self.apply_exclusive_groups(
+            values
+        )
 
         if top_k is not None:
-            values = values[:top_k]
+            values = values[
+                :top_k
+            ]
 
         return values
 
-    def apply_exclusive_groups(self, predictions):
-        exclusive_groups = [
-            [
-                "day",
-                "night",
-                "dawn_dusk",
-            ],
-            [
-                "warm_light",
-                "cold_light",
-            ],
-        ]
-
+    def apply_exclusive_groups(
+        self,
+        predictions,
+    ):
         predictions_by_label = {
             item["label"]: item
             for item in predictions
@@ -172,7 +338,7 @@ class AtmospherePredictor:
 
         labels_to_remove = set()
 
-        for group in exclusive_groups:
+        for group in EXCLUSIVE_GROUPS:
             active_labels = [
                 label
                 for label in group
@@ -184,43 +350,39 @@ class AtmospherePredictor:
 
             best_label = max(
                 active_labels,
-                key=lambda label: predictions_by_label[label]["score"],
+                key=lambda label:
+                predictions_by_label[
+                    label
+                ]["score"],
             )
 
             for label in active_labels:
                 if label != best_label:
-                    labels_to_remove.add(label)
+                    labels_to_remove.add(
+                        label
+                    )
 
-        filtered_predictions = [
+        return [
             item
             for item in predictions
-            if item["label"] not in labels_to_remove
+            if item["label"]
+            not in labels_to_remove
         ]
 
-        return filtered_predictions
-
-    def group_predictions(self, predictions):
+    def group_predictions(
+        self,
+        predictions,
+    ):
         groups = {
-            "time_of_day": [
-                "day",
-                "night",
-                "dawn_dusk",
-            ],
-            "lighting": [
-                "bright",
-                "dark",
-                "low_light",
-                "backlit",
-                "warm_light",
-                "cold_light",
-            ],
-            "weather": [
-                "clear_weather",
-                "cloudy",
-                "foggy",
-                "rainy",
-                "snowy",
-            ],
+            "time_of_day": (
+                TIME_OF_DAY_LABELS
+            ),
+            "lighting": (
+                LIGHTING_LABELS
+            ),
+            "weather": (
+                WEATHER_LABELS
+            ),
         }
 
         predictions_by_label = {
@@ -231,67 +393,104 @@ class AtmospherePredictor:
         grouped = {}
 
         for group_name, labels in groups.items():
-            grouped[group_name] = [
-                predictions_by_label[label]
-                for label in labels
-                if label in predictions_by_label
-            ]
+            grouped[
+                group_name
+            ] = sorted(
+                [
+                    predictions_by_label[
+                        label
+                    ]
+                    for label in labels
+                    if label
+                    in predictions_by_label
+                ],
+                key=lambda item:
+                item["score"],
+                reverse=True,
+            )
 
         return grouped
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Executa inferência com a SpectraAtmosphereNet."
+        description=(
+            "Executa inferência com "
+            "a SpectraAtmosphereNet."
+        )
     )
 
     parser.add_argument(
         "image_path",
-        help="Caminho da imagem para prever.",
+        help=(
+            "Caminho da imagem "
+            "para prever."
+        ),
     )
 
     parser.add_argument(
         "--model-path",
         required=True,
-        help="Caminho para o checkpoint atmosphere_net_best.pt.",
+        help=(
+            "Caminho para "
+            "atmosphere_net_best.pt."
+        ),
     )
 
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.4,
-        help="Threshold mínimo para exibir uma label.",
+        default=0.5,
+        help=(
+            "Threshold mínimo "
+            "para exibir uma label."
+        ),
     )
 
     parser.add_argument(
         "--top-k",
         type=int,
-        default=10,
-        help="Quantidade máxima de labels exibidas.",
+        default=11,
+        help=(
+            "Quantidade máxima "
+            "de labels exibidas."
+        ),
     )
 
     parser.add_argument(
         "--top-only",
         action="store_true",
-        help="Ignora threshold e mostra apenas as top-k labels.",
+        help=(
+            "Ignora threshold e "
+            "mostra as maiores probabilidades."
+        ),
     )
 
     parser.add_argument(
         "--group-by-category",
         action="store_true",
-        help="Inclui grouped_predictions no resultado.",
+        help=(
+            "Agrupa resultados em "
+            "time_of_day, lighting "
+            "e weather."
+        ),
     )
 
     parser.add_argument(
         "--json",
         action="store_true",
-        help="Mostra resultado completo em JSON.",
+        help=(
+            "Mostra resultado "
+            "completo em JSON."
+        ),
     )
 
     return parser
 
 
-def run_inference(args):
+def run_inference(
+    args,
+):
     predictor = AtmospherePredictor(
         model_path=args.model_path,
         threshold=args.threshold,
@@ -302,62 +501,132 @@ def run_inference(args):
         result = predictor.predict_top_labels(
             image_path=args.image_path,
             top_k=args.top_k,
+            group_by_category=(
+                args.group_by_category
+            ),
         )
 
-        predictions = result["top_predictions"]
+        predictions = result[
+            "top_predictions"
+        ]
 
     else:
         result = predictor.predict_frame(
             image_path=args.image_path,
             threshold=args.threshold,
             top_k=args.top_k,
-            group_by_category=args.group_by_category,
+            group_by_category=(
+                args.group_by_category
+            ),
         )
 
-        predictions = result["predictions"]
+        predictions = result[
+            "predictions"
+        ]
 
-    return result, predictions
+    return (
+        result,
+        predictions,
+    )
 
 
-def print_result(args, result, predictions):
-    print("=" * 80)
-    print("SPECTRA ATMOSPHERE NET - INFERÊNCIA")
-    print("=" * 80)
-    print("Imagem:", args.image_path)
-    print("Modelo:", args.model_path)
+def print_result(
+    args,
+    result,
+    predictions,
+):
+    print(
+        "=" * 80
+    )
+
+    print(
+        "SPECTRA ATMOSPHERE NET "
+        "- INFERÊNCIA"
+    )
+
+    print(
+        "=" * 80
+    )
+
+    print(
+        "Imagem:",
+        args.image_path,
+    )
+
+    print(
+        "Modelo:",
+        args.model_path,
+    )
 
     if args.top_only:
-        print("Modo: top-only")
+        print(
+            "Modo: top-only"
+        )
+
     else:
-        print("Threshold:", args.threshold)
+        print(
+            "Threshold:",
+            args.threshold,
+        )
 
-    if args.group_by_category and "grouped_predictions" in result:
-        print("\nPredições por grupo:")
+    if (
+        args.group_by_category
+        and "grouped_predictions"
+        in result
+    ):
+        print(
+            "\nPredições por grupo:"
+        )
 
-        for group_name, group_predictions in result["grouped_predictions"].items():
+        for (
+            group_name,
+            group_predictions,
+        ) in result[
+            "grouped_predictions"
+        ].items():
+
             if not group_predictions:
                 continue
 
-            print(f"\n[{group_name}]")
+            print(
+                f"\n[{group_name}]"
+            )
 
             for item in group_predictions:
-                print(f"- {item['label']}: {item['score']:.4f}")
+                print(
+                    f"- {item['label']}: "
+                    f"{item['score']:.4f}"
+                )
 
-    print("\nPredições brutas:")
+    print(
+        "\nPredições:"
+    )
 
     if not predictions:
-        print("Nenhuma label passou pelo threshold.")
+        print(
+            "Nenhuma label passou "
+            "pelo threshold."
+        )
+
         return
 
     for item in predictions:
-        print(f"{item['label']}: {item['score']:.4f}")
+        print(
+            f"{item['label']}: "
+            f"{item['score']:.4f}"
+        )
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    result, predictions = run_inference(args)
+    (
+        result,
+        predictions,
+    ) = run_inference(
+        args
+    )
 
     if args.json:
         print(
