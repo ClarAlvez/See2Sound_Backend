@@ -96,6 +96,11 @@ class AtmospherePredictor:
             False,
         )
 
+        self.unfreeze_last_block = self.config.get(
+            "unfreeze_last_block",
+            False,
+        )
+
         self.transform = get_test_transforms(
             self.image_size
         )
@@ -106,6 +111,7 @@ class AtmospherePredictor:
             dropout_rate=self.dropout_rate,
             backbone_name=self.backbone_name,
             pretrained=False,
+            unfreeze_last_block=self.unfreeze_last_block,
             freeze_backbone=self.freeze_backbone,
         ).to(self.device)
 

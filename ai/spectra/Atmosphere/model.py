@@ -37,6 +37,7 @@ class SpectraAtmosphereNet(nn.Module):
         backbone_name="resnet18",
         pretrained=True,
         freeze_backbone=False,
+        unfreeze_last_block=False,
     ):
         super().__init__()
 
@@ -46,6 +47,7 @@ class SpectraAtmosphereNet(nn.Module):
         self.backbone_name = backbone_name
         self.pretrained = pretrained
         self.freeze_backbone = freeze_backbone
+        self.unfreeze_last_block = unfreeze_last_block
 
         self.backbone, in_features = self.create_backbone(
             backbone_name=backbone_name,
@@ -54,6 +56,8 @@ class SpectraAtmosphereNet(nn.Module):
 
         if freeze_backbone:
             self.freeze_backbone_parameters()
+            if unfreeze_last_block:
+                self.unfreeze_last_backbone_block()
 
         self.classifier = nn.Sequential(
             nn.Dropout(dropout_rate),
@@ -105,3 +109,14 @@ class SpectraAtmosphereNet(nn.Module):
     def freeze_backbone_parameters(self):
         for parameter in self.backbone.parameters():
             parameter.requires_grad = False
+
+    def unfreeze_last_backbone_block(self):
+        if self.backbone_name.startswith("resnet"):
+            for parameter in self.backbone.layer4.parameters():
+                parameter.requires_grad = True
+
+        else:
+            raise ValueError(
+                "O desbloqueio parcial está implementado "
+                "apenas para backbones ResNet."
+            )
