@@ -1,5 +1,10 @@
-from ai.spectra.Correlation.inference import CorrelationPredictor
-from ai.spectra.Correlation.labels import SPECTRA_CORRELATION_LABELS
-from ai.spectra.Correlation.model import SpectraCorrelationNet
+from ai.spectra.Correlation.config import CorrelationConfig
+from ai.spectra.Correlation.engine import CorrelationEngine
+from ai.spectra.Correlation.memory import EntityMemory
 
-__all__ = ["CorrelationPredictor", "SPECTRA_CORRELATION_LABELS", "SpectraCorrelationNet"]
+
+__all__ = [
+    "CorrelationConfig",
+    "CorrelationEngine",
+    "EntityMemory",
+]

@@ -77,6 +77,7 @@ class PersonCropper:
                 {
                     "crop_path": str(crop_path),
                     "bbox": [crop_x1, crop_y1, crop_x2, crop_y2],
+                    "detection_bbox": [float(x1), float(y1), float(x2), float(y2)],
                     "detector_confidence": confidence,
                 }
             )
