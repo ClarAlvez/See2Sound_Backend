@@ -6,8 +6,19 @@ from typing import List, Optional
 class CorrelationConfig:
     device: Optional[str] = None
 
-    appearance_backbone: str = "resnet18"
-    pretrained: bool = True
+    # ============================================================
+    # Identity Encoder
+    # ============================================================
+
+    identity_encoder_type: str = "resnet"
+
+    identity_backbone: str = "resnet18"
+
+    identity_pretrained: bool = True
+
+    identity_model_path: Optional[str] = None
+
+    identity_embedding_size: Optional[int] = None
 
     # ============================================================
     # Tracking local

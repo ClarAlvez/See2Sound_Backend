@@ -5,8 +5,8 @@ from typing import Dict, List
 
 import torch
 
-from ai.spectra.Correlation.appearance import (
-    AppearanceEncoder,
+from ai.spectra.Correlation.encoders import (
+    create_identity_encoder,
 )
 from ai.spectra.Correlation.config import (
     CorrelationConfig,
@@ -36,17 +36,9 @@ class CorrelationEngine:
             or CorrelationConfig()
         )
 
-        self.appearance_encoder = (
-            AppearanceEncoder(
-                backbone_name=(
-                    self.config.appearance_backbone
-                ),
-                pretrained=(
-                    self.config.pretrained
-                ),
-                device=(
-                    self.config.device
-                ),
+        self.identity_encoder = (
+            create_identity_encoder(
+                self.config
             )
         )
 
@@ -117,6 +109,20 @@ class CorrelationEngine:
             "version": (
                 "0.2.1"
             ),
+
+            "identity_encoder": {
+                "type": (
+                    self.config.identity_encoder_type
+                ),
+
+                "name": (
+                    self.identity_encoder.name
+                ),
+
+                "embedding_dimension": (
+                    self.identity_encoder.embedding_dimension
+                ),
+            },
 
             "frame_count": len(
                 processed_frames
@@ -555,7 +561,7 @@ class CorrelationEngine:
         ]
 
         embeddings = (
-            self.appearance_encoder.encode_batch(
+            self.identity_encoder.encode_batch(
                 crop_paths
             )
         )
