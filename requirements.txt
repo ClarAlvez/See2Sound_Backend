@@ -16,3 +16,4 @@ fiftyone
 pyttsx3
 scipy
 ultralytics
+imageio-ffmpeg

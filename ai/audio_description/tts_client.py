@@ -2,7 +2,7 @@ import os
 import subprocess
 import tempfile
 from typing import List, Optional
-
+import imageio_ffmpeg
 import pyttsx3
 
 
@@ -125,14 +125,12 @@ class TTSClient:
         input_path: str,
         output_path: str,
     ) -> None:
-        """
-        Converte o áudio para WAV mono 44.1kHz.
-
-        Isso padroniza o arquivo para o FFmpeg mixar depois.
-        """
+        ffmpeg_executable = (
+            imageio_ffmpeg.get_ffmpeg_exe()
+        )
 
         command = [
-            "ffmpeg",
+            ffmpeg_executable,
             "-y",
             "-i",
             input_path,
@@ -150,14 +148,14 @@ class TTSClient:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-        except FileNotFoundError:
-            raise RuntimeError(
-                "FFmpeg não foi encontrado. Instale o FFmpeg para converter e mixar áudios."
-            )
+
         except subprocess.CalledProcessError as error:
             raise RuntimeError(
                 "Erro ao converter áudio TTS para WAV: {}".format(
-                    error.stderr.decode("utf-8", errors="ignore")
+                    error.stderr.decode(
+                        "utf-8",
+                        errors="ignore",
+                    )
                 )
             )
 

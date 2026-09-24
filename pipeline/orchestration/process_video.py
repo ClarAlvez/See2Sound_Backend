@@ -38,17 +38,6 @@ def create_narrative_generator(
     )
 
 
-def create_tts_engine(
-    rate: int = 170,
-    volume: float = 1.0,
-):
-    from ai.audio_description.tts_client import TTSClient
-
-    return TTSClient(
-        rate=rate,
-        volume=volume,
-    )
-
 
 # ============================================================
 # Validação e diretórios
@@ -87,7 +76,10 @@ def build_output_directories(
         "object_crops_dir": output_base_dir / "object_crops",
         "action_crops_dir": output_base_dir / "action_person_crops",
         "narrative_dir": output_base_dir / "narrative",
-        "audio_description_dir": output_base_dir / "audio_descriptions",
+        "voice_dir": (
+            output_base_dir
+            / "voice_engine"
+        ),
     }
 
     for directory in directories.values():
@@ -1398,84 +1390,62 @@ def generate_narrative_timeline(
 
 
 # ============================================================
-# TTS
+# Voice Engine
 # ============================================================
 
 
-def safe_time_for_filename(
-    value: Any,
-) -> str:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = 0.0
-
-    return f"{number:08.2f}".replace(
-        ".",
-        "_",
-    )
-
-
-def generate_audio_description_files(
+def generate_voice_audio(
+    audio_result: Dict[str, Any],
+    whisper_result: Dict[str, Any],
     narrative_timeline: List[Dict[str, Any]],
+    metadata_result: Dict[str, Any],
     output_dir: Path,
     tts_rate: int = 170,
     tts_volume: float = 1.0,
-) -> List[Dict[str, Any]]:
-    tts = create_tts_engine(
-        rate=tts_rate,
-        volume=tts_volume,
+    min_pause_duration: float = 0.5,
+    background_volume: float = 0.45,
+    description_volume: float = 1.0,
+) -> Dict[str, Any]:
+    from ai.voice_engine.voice_engine import VoiceEngine
+
+    original_audio_path = resolve_audio_path(
+        audio_result
     )
 
-    audio_outputs = []
+    total_duration = get_video_duration_seconds(
+        metadata_result
+    )
 
-    for index, item in enumerate(
-        narrative_timeline
-    ):
-        description = item.get(
-            "description",
-            "",
+    if total_duration is None or total_duration <= 0:
+        raise ValueError(
+            "Não foi possível determinar a duração do vídeo "
+            "para executar a Voice Engine."
         )
 
-        if not description:
-            continue
+    speech_segments = whisper_result.get(
+        "speech_segments",
+        [],
+    )
 
-        start_time = item.get(
-            "start_time",
-            0.0,
-        )
-        end_time = item.get(
-            "end_time",
-            start_time,
-        )
+    engine = VoiceEngine(
+        output_dir=str(output_dir),
+        tts_rate=tts_rate,
+        tts_volume=tts_volume,
+        min_pause_duration=min_pause_duration,
+        background_volume=background_volume,
+        description_volume=description_volume,
+    )
 
-        file_name = "ad_{:04d}_{}_{}.wav".format(
-            index,
-            safe_time_for_filename(start_time),
-            safe_time_for_filename(end_time),
-        )
+    result = engine.generate(
+        original_audio_path=str(
+            original_audio_path
+        ),
+        narrative_timeline=narrative_timeline,
+        speech_segments=speech_segments,
+        total_duration=total_duration,
+    )
 
-        output_path = output_dir / file_name
-
-        saved_output = tts.save_to_file(
-            text=description,
-            output_path=str(output_path),
-        )
-
-        audio_outputs.append(
-            {
-                "index": index,
-                "start_time": start_time,
-                "end_time": end_time,
-                "description": description,
-                "audio_path": str(
-                    saved_output or output_path
-                ),
-                "source_narrative": item,
-            }
-        )
-
-    return audio_outputs
+    return result.to_dict()
 
 
 # ============================================================
@@ -1492,7 +1462,7 @@ def build_processing_result(
     scenes_result: Dict[str, Any],
     spectra_outputs: List[Dict[str, Any]],
     narrative_timeline: List[Dict[str, Any]],
-    audio_description_outputs: List[Dict[str, Any]],
+    voice_result: Optional[Dict[str, Any]],
     saved_artifacts: Dict[str, str],
 ) -> Dict[str, Any]:
     return {
@@ -1504,9 +1474,6 @@ def build_processing_result(
         "audio": {
             "extraction": audio_result,
             "speech_analysis": whisper_result,
-            "description_generation": (
-                audio_description_outputs
-            ),
         },
         "frames": frames_result,
         "scenes": scenes_result,
@@ -1516,6 +1483,7 @@ def build_processing_result(
         "narrative": {
             "timeline": narrative_timeline,
         },
+        "voice_engine": voice_result,
         "artifacts": saved_artifacts,
     }
 
@@ -1586,9 +1554,11 @@ def process_video(
         "Llama-3.2-1B-Instruct-Q6_K_L.gguf"
     ),
 
-    # TTS
+    # Voice Engine
     tts_rate: int = 170,
     tts_volume: float = 1.0,
+    voice_background_volume: float = 0.45,
+    voice_description_volume: float = 1.0,
 
     # Controle
     run_spectra: bool = True,
@@ -1598,23 +1568,34 @@ def process_video(
     """
     Pipeline principal do See2Sound.
 
-    Fluxo visual:
-    Scene -> frame completo
-    Atmosphere -> frame completo
-    Person -> crops de pessoas por YOLO
-    Object -> crops de objetos por YOLO + ObjectNet
-    Actions -> crops de pessoas + pós-processamento temporal
+    Fluxo:
+    vídeo
+    -> metadados
+    -> extração de áudio
+    -> Whisper / pausas
+    -> frames e cenas
+    -> Spectra
+    -> Narrative Engine
+    -> Voice Engine
+    -> áudio original modificado com audiodescrição
 
-    As saídas são unificadas antes de seguir para Narrative.
+    O backend não remonta o vídeo final. A saída principal da Voice
+    Engine é uma faixa de áudio completa, sincronizada com o vídeo
+    original, para o aplicativo usar durante a reprodução.
+
+    `run_tts` é mantido por compatibilidade com a API existente e
+    controla a execução da Voice Engine.
     """
     validated_video_path = validate_video_path(
         video_path
     )
+
     validated_output_base_dir = (
         ensure_output_base_directory(
             output_base_dir
         )
     )
+
     output_dirs = build_output_directories(
         validated_output_base_dir
     )
@@ -1624,7 +1605,9 @@ def process_video(
     )
 
     audio_result = process_audio(
-        video_path=str(validated_video_path),
+        video_path=str(
+            validated_video_path
+        ),
         audio_output_dir=output_dirs[
             "audio_dir"
         ],
@@ -1639,15 +1622,21 @@ def process_video(
         ),
         whisper_language=whisper_language,
         whisper_beam_size=whisper_beam_size,
-        whisper_vad_filter=whisper_vad_filter,
-        min_pause_duration=min_pause_duration,
+        whisper_vad_filter=(
+            whisper_vad_filter
+        ),
+        min_pause_duration=(
+            min_pause_duration
+        ),
         refine_with_detected_language=(
             refine_with_detected_language
         ),
     )
 
     frames_result = process_frames(
-        video_path=str(validated_video_path),
+        video_path=str(
+            validated_video_path
+        ),
         frames_output_dir=output_dirs[
             "frames_dir"
         ],
@@ -1657,7 +1646,9 @@ def process_video(
     )
 
     scenes_result = process_scenes(
-        video_path=str(validated_video_path),
+        video_path=str(
+            validated_video_path
+        ),
         threshold=scene_threshold,
         min_scene_gap_seconds=(
             min_scene_gap_seconds
@@ -1667,6 +1658,7 @@ def process_video(
     frame_paths = collect_extracted_frames(
         frames_result
     )
+
     frame_records = build_frame_records(
         frame_paths=frame_paths,
         frame_interval_seconds=(
@@ -1688,7 +1680,9 @@ def process_video(
         fallback_end_time=fallback_end_time,
     )
 
-    spectra_outputs: List[Dict[str, Any]] = []
+    spectra_outputs: List[
+        Dict[str, Any]
+    ] = []
 
     person_cropper = None
     object_analyzer = None
@@ -1700,30 +1694,45 @@ def process_video(
         and person_model_path
     ):
         person_cropper = PersonCropper(
-            model_name=person_cropper_model_name,
+            model_name=(
+                person_cropper_model_name
+            ),
             confidence_threshold=(
                 person_cropper_confidence_threshold
             ),
         )
 
-    if run_spectra and use_object_cropper:
-        object_analyzer = create_object_analyzer(
-            object_model_path=object_model_path,
-            object_threshold=(
-                spectra_object_threshold
-            ),
-            object_top_k=spectra_top_k,
-            cropper_model_name=(
-                object_cropper_model_name
-            ),
-            cropper_confidence_threshold=(
-                object_cropper_confidence_threshold
-            ),
-            max_objects=object_max_objects,
-            use_full_frame=(
-                use_object_model_on_full_frame
-            ),
-            strict=strict_model_loading,
+    if (
+        run_spectra
+        and use_object_cropper
+    ):
+        object_analyzer = (
+            create_object_analyzer(
+                object_model_path=(
+                    object_model_path
+                ),
+                object_threshold=(
+                    spectra_object_threshold
+                ),
+                object_top_k=(
+                    spectra_top_k
+                ),
+                cropper_model_name=(
+                    object_cropper_model_name
+                ),
+                cropper_confidence_threshold=(
+                    object_cropper_confidence_threshold
+                ),
+                max_objects=(
+                    object_max_objects
+                ),
+                use_full_frame=(
+                    use_object_model_on_full_frame
+                ),
+                strict=(
+                    strict_model_loading
+                ),
+            )
         )
 
     if (
@@ -1731,61 +1740,76 @@ def process_video(
         and use_action_model
         and use_action_person_cropper
     ):
-        action_analyzer = create_action_analyzer(
-            action_model_path=action_model_path,
-            action_threshold=(
-                spectra_action_threshold
-            ),
-            action_top_k=spectra_top_k,
-            person_cropper_model_name=(
-                person_cropper_model_name
-            ),
-            person_cropper_confidence_threshold=(
-                person_cropper_confidence_threshold
-            ),
-            max_people=action_max_people,
-            strict=strict_model_loading,
+        action_analyzer = (
+            create_action_analyzer(
+                action_model_path=(
+                    action_model_path
+                ),
+                action_threshold=(
+                    spectra_action_threshold
+                ),
+                action_top_k=(
+                    spectra_top_k
+                ),
+                person_cropper_model_name=(
+                    person_cropper_model_name
+                ),
+                person_cropper_confidence_threshold=(
+                    person_cropper_confidence_threshold
+                ),
+                max_people=(
+                    action_max_people
+                ),
+                strict=(
+                    strict_model_loading
+                ),
+            )
         )
 
     if run_spectra:
-        # Evita carregar ObjectNet duas vezes quando ObjectAnalyzer
-        # já é responsável pela inferência por crops.
         direct_object_model_path = (
             None
             if object_analyzer is not None
             else object_model_path
         )
 
-        predictors = create_spectra_predictors(
-            scene_model_path=scene_model_path,
-            person_model_path=person_model_path,
-            object_model_path=(
-                direct_object_model_path
-            ),
-            atmosphere_model_path=(
-                atmosphere_model_path
-            ),
-            scene_threshold=(
-                spectra_scene_threshold
-            ),
-            person_threshold=(
-                spectra_person_threshold
-            ),
-            object_threshold=(
-                spectra_object_threshold
-            ),
-            atmosphere_threshold=(
-                spectra_atmosphere_threshold
-            ),
-            top_k=spectra_top_k,
-            strict_model_loading=(
-                strict_model_loading
-            ),
+        predictors = (
+            create_spectra_predictors(
+                scene_model_path=(
+                    scene_model_path
+                ),
+                person_model_path=(
+                    person_model_path
+                ),
+                object_model_path=(
+                    direct_object_model_path
+                ),
+                atmosphere_model_path=(
+                    atmosphere_model_path
+                ),
+                scene_threshold=(
+                    spectra_scene_threshold
+                ),
+                person_threshold=(
+                    spectra_person_threshold
+                ),
+                object_threshold=(
+                    spectra_object_threshold
+                ),
+                atmosphere_threshold=(
+                    spectra_atmosphere_threshold
+                ),
+                top_k=spectra_top_k,
+                strict_model_loading=(
+                    strict_model_loading
+                ),
+            )
         )
 
         has_visual_model = any(
             predictor is not None
-            for predictor in predictors.values()
+            for predictor
+            in predictors.values()
         )
 
         if (
@@ -1794,35 +1818,50 @@ def process_video(
             and action_analyzer is None
         ):
             print(
-                "[Spectra] Nenhum modelo visual carregado. "
-                "Pulando análise visual."
+                "[Spectra] Nenhum modelo visual "
+                "carregado. Pulando análise visual."
             )
+
         else:
             spectra_outputs = (
                 build_spectra_outputs_for_scenes(
-                    frame_records=frame_records,
-                    scene_intervals=scene_intervals,
-                    whisper_result=whisper_result,
-                    predictors=predictors,
+                    frame_records=(
+                        frame_records
+                    ),
+                    scene_intervals=(
+                        scene_intervals
+                    ),
+                    whisper_result=(
+                        whisper_result
+                    ),
+                    predictors=(
+                        predictors
+                    ),
                     use_person_model_on_full_frame=(
                         use_person_model_on_full_frame
                     ),
                     use_object_model_on_full_frame=(
                         use_object_model_on_full_frame
                     ),
-                    person_cropper=person_cropper,
+                    person_cropper=(
+                        person_cropper
+                    ),
                     person_crops_output_dir=(
                         output_dirs[
                             "person_crops_dir"
                         ]
                     ),
-                    object_analyzer=object_analyzer,
+                    object_analyzer=(
+                        object_analyzer
+                    ),
                     object_crops_output_dir=(
                         output_dirs[
                             "object_crops_dir"
                         ]
                     ),
-                    action_analyzer=action_analyzer,
+                    action_analyzer=(
+                        action_analyzer
+                    ),
                     action_crops_output_dir=(
                         output_dirs[
                             "action_crops_dir"
@@ -1834,48 +1873,95 @@ def process_video(
                     spectra_action_threshold=(
                         spectra_action_threshold
                     ),
-                    spectra_top_k=spectra_top_k,
-                    person_max_people=person_max_people,
+                    spectra_top_k=(
+                        spectra_top_k
+                    ),
+                    person_max_people=(
+                        person_max_people
+                    ),
                     max_temporal_frames_per_scene=(
                         max_temporal_frames_per_scene
                     ),
                 )
             )
 
-    narrative_timeline: List[Dict[str, Any]] = []
-
-    if run_narrative:
-        narrative_timeline = (
-            generate_narrative_timeline(
-                spectra_outputs=spectra_outputs,
-                narrative_model_path=(
-                    narrative_model_path
-                ),
-            )
-        )
-
-    audio_description_outputs: List[
+    narrative_timeline: List[
         Dict[str, Any]
     ] = []
 
-    if run_tts:
-        audio_description_outputs = (
-            generate_audio_description_files(
-                narrative_timeline=(
-                    narrative_timeline
-                ),
-                output_dir=output_dirs[
-                    "audio_description_dir"
-                ],
-                tts_rate=tts_rate,
-                tts_volume=tts_volume,
+    if run_narrative:
+        if not spectra_outputs:
+            print(
+                "[Narrative] Nenhuma saída da "
+                "Spectra disponível. Pulando Narrative."
             )
-        )
+        else:
+            narrative_timeline = (
+                generate_narrative_timeline(
+                    spectra_outputs=(
+                        spectra_outputs
+                    ),
+                    narrative_model_path=(
+                        narrative_model_path
+                    ),
+                )
+            )
+
+    voice_result: Optional[
+        Dict[str, Any]
+    ] = None
+
+    if run_tts:
+        if not narrative_timeline:
+            print(
+                "[Voice Engine] Nenhuma descrição "
+                "narrativa disponível. Pulando geração "
+                "do áudio audiodescrito."
+            )
+        else:
+            voice_result = (
+                generate_voice_audio(
+                    audio_result=(
+                        audio_result
+                    ),
+                    whisper_result=(
+                        whisper_result
+                    ),
+                    narrative_timeline=(
+                        narrative_timeline
+                    ),
+                    metadata_result=(
+                        metadata_result
+                    ),
+                    output_dir=(
+                        output_dirs[
+                            "voice_dir"
+                        ]
+                    ),
+                    tts_rate=(
+                        tts_rate
+                    ),
+                    tts_volume=(
+                        tts_volume
+                    ),
+                    min_pause_duration=(
+                        min_pause_duration
+                    ),
+                    background_volume=(
+                        voice_background_volume
+                    ),
+                    description_volume=(
+                        voice_description_volume
+                    ),
+                )
+            )
 
     spectra_json_path = save_json(
         data=spectra_outputs,
         output_path=(
-            output_dirs["spectra_dir"]
+            output_dirs[
+                "spectra_dir"
+            ]
             / "spectra_outputs.json"
         ),
     )
@@ -1883,18 +1969,10 @@ def process_video(
     narrative_json_path = save_json(
         data=narrative_timeline,
         output_path=(
-            output_dirs["narrative_dir"]
-            / "narrative_timeline.json"
-        ),
-    )
-
-    audio_descriptions_json_path = save_json(
-        data=audio_description_outputs,
-        output_path=(
             output_dirs[
-                "audio_description_dir"
+                "narrative_dir"
             ]
-            / "audio_description_outputs.json"
+            / "narrative_timeline.json"
         ),
     )
 
@@ -1905,10 +1983,30 @@ def process_video(
         "narrative_timeline_json": str(
             narrative_json_path
         ),
-        "audio_description_outputs_json": str(
-            audio_descriptions_json_path
-        ),
     }
+
+    if voice_result:
+        modified_audio_path = (
+            voice_result.get(
+                "modified_audio_path"
+            )
+        )
+
+        manifest_path = (
+            voice_result.get(
+                "manifest_path"
+            )
+        )
+
+        if modified_audio_path:
+            saved_artifacts[
+                "audio_description"
+            ] = modified_audio_path
+
+        if manifest_path:
+            saved_artifacts[
+                "voice_manifest"
+            ] = manifest_path
 
     return build_processing_result(
         video_path=validated_video_path,
@@ -1918,9 +2016,11 @@ def process_video(
         frames_result=frames_result,
         scenes_result=scenes_result,
         spectra_outputs=spectra_outputs,
-        narrative_timeline=narrative_timeline,
-        audio_description_outputs=(
-            audio_description_outputs
+        narrative_timeline=(
+            narrative_timeline
         ),
-        saved_artifacts=saved_artifacts,
+        voice_result=voice_result,
+        saved_artifacts=(
+            saved_artifacts
+        ),
     )
