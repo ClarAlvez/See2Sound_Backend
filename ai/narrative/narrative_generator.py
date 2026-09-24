@@ -92,14 +92,48 @@ class LLMNarrativeGenerator:
         description = self._clean_model_output(raw_description)
 
         if not description:
+            fallback_description = (
+                self._build_factual_fallback(
+                    scene_context_dict
+                )
+            )
+
+            if fallback_description:
+                return NarrativeOutput(
+                    description=(
+                        fallback_description
+                    ),
+                    start_time=(
+                        narrative_input.start_time
+                    ),
+                    end_time=(
+                        narrative_input.end_time
+                    ),
+                    labels=cleaned_labels,
+                    scene_context=(
+                        scene_context_dict
+                    ),
+                    skipped=False,
+                    skip_reason=None,
+                )
+
             return NarrativeOutput(
                 description="",
-                start_time=narrative_input.start_time,
-                end_time=narrative_input.end_time,
+                start_time=(
+                    narrative_input.start_time
+                ),
+                end_time=(
+                    narrative_input.end_time
+                ),
                 labels=cleaned_labels,
-                scene_context=scene_context_dict,
+                scene_context=(
+                    scene_context_dict
+                ),
                 skipped=True,
-                skip_reason="O modelo não gerou uma descrição válida.",
+                skip_reason=(
+                    "O modelo não gerou "
+                    "uma descrição válida."
+                ),
             )
 
         fidelity_warnings = self.fidelity_filter.validate(
@@ -121,15 +155,55 @@ class LLMNarrativeGenerator:
         ]
 
         if critical_warnings:
+            fallback_description = (
+                self._build_factual_fallback(
+                    scene_context_dict
+                )
+            )
+
+            if fallback_description:
+                return NarrativeOutput(
+                    description=(
+                        fallback_description
+                    ),
+                    start_time=(
+                        narrative_input.start_time
+                    ),
+                    end_time=(
+                        narrative_input.end_time
+                    ),
+                    labels=cleaned_labels,
+                    scene_context=(
+                        scene_context_dict
+                    ),
+                    skipped=False,
+                    skip_reason=None,
+                    fidelity_warnings=(
+                        fidelity_warnings
+                    ),
+                )
+
             return NarrativeOutput(
                 description="",
-                start_time=narrative_input.start_time,
-                end_time=narrative_input.end_time,
+                start_time=(
+                    narrative_input.start_time
+                ),
+                end_time=(
+                    narrative_input.end_time
+                ),
                 labels=cleaned_labels,
-                scene_context=scene_context_dict,
+                scene_context=(
+                    scene_context_dict
+                ),
                 skipped=True,
-                skip_reason="Descrição rejeitada por inconsistência factual.",
-                fidelity_warnings=fidelity_warnings,
+                skip_reason=(
+                    "Descrição rejeitada "
+                    "por inconsistência factual "
+                    "e não foi possível gerar fallback."
+                ),
+                fidelity_warnings=(
+                    fidelity_warnings
+                ),
             )
 
         return NarrativeOutput(
@@ -142,6 +216,7 @@ class LLMNarrativeGenerator:
             skip_reason=None,
             fidelity_warnings=fidelity_warnings,
         )
+        
 
     def generate_batch(
         self,
@@ -232,51 +307,95 @@ class LLMNarrativeGenerator:
         self,
         spectra_outputs: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """
-        Método conveniente para integração com pipeline.
-
-        Entrada esperada:
-        [
-            {
-                "start_time": 0.0,
-                "end_time": 4.0,
-                "labels": ["person", "running", "street", "night"],
-                "confidence": {},
-                "context": {}
-            }
-        ]
-
-        Saída:
-        [
-            {
-                "start_time": 0.0,
-                "end_time": 4.0,
-                "description": "Uma pessoa corre pela rua durante a noite.",
-                ...
-            }
-        ]
-        """
-
         inputs = []
 
         for item in spectra_outputs:
             inputs.append(
                 NarrativeInput(
-                    labels=item.get("labels", []),
-                    start_time=item.get("start_time"),
-                    end_time=item.get("end_time"),
-                    confidence=item.get("confidence", {}),
-                    context=item.get("context", {}),
+                    labels=item.get(
+                        "labels",
+                        [],
+                    ),
+                    start_time=item.get(
+                        "start_time"
+                    ),
+                    end_time=item.get(
+                        "end_time"
+                    ),
+                    confidence=item.get(
+                        "confidence",
+                        {},
+                    ),
+                    context=item.get(
+                        "context",
+                        {},
+                    ),
                 )
             )
 
-        outputs = self.generate_batch(inputs)
+        print(
+            "[Narrative DEBUG] "
+            f"Entradas recebidas: {len(inputs)}"
+        )
 
-        return [
-            output.to_dict()
-            for output in outputs
-            if not output.skipped
-        ]
+        outputs = self.generate_batch(
+            inputs
+        )
+
+        print(
+            "[Narrative DEBUG] "
+            f"Saídas produzidas: {len(outputs)}"
+        )
+
+        valid_outputs = []
+
+        for index, output in enumerate(
+            outputs
+        ):
+            print(
+                "\n"
+                "[Narrative DEBUG] "
+                f"Output #{index}"
+            )
+
+            print(
+                "  labels:",
+                output.labels,
+            )
+
+            print(
+                "  skipped:",
+                output.skipped,
+            )
+
+            print(
+                "  motivo:",
+                output.skip_reason,
+            )
+
+            print(
+                "  descrição:",
+                output.description,
+            )
+
+            print(
+                "  fidelity_warnings:",
+                output.fidelity_warnings,
+            )
+
+            if not output.skipped:
+                valid_outputs.append(
+                    output.to_dict()
+                )
+
+        print(
+            "\n"
+            "[Narrative DEBUG] "
+            f"Descrições válidas: "
+            f"{len(valid_outputs)}"
+        )
+
+        return valid_outputs
 
     def _build_prompt_data(
         self,
@@ -369,3 +488,249 @@ class LLMNarrativeGenerator:
                 return text[len(marker):].strip()
 
         return text
+    
+    def _build_factual_fallback(
+        self,
+        scene_context_dict: Dict[str, Any],
+    ) -> str:
+        subjects = scene_context_dict.get(
+            "subjects",
+            [],
+        )
+
+        actions = scene_context_dict.get(
+            "actions",
+            [],
+        )
+
+        objects = scene_context_dict.get(
+            "objects",
+            [],
+        )
+
+        environment = scene_context_dict.get(
+            "environment",
+            [],
+        )
+
+        time_labels = scene_context_dict.get(
+            "time",
+            [],
+        )
+
+        attributes = scene_context_dict.get(
+            "attributes",
+            [],
+        )
+
+        translations = (
+            self.prompt_builder.LABEL_TO_PT
+        )
+
+        def translate(
+            values: List[str],
+        ) -> List[str]:
+            return [
+                translations.get(
+                    value,
+                    value.replace(
+                        "_",
+                        " ",
+                    ),
+                )
+                for value in values
+            ]
+
+        subjects_pt = translate(
+            subjects
+        )
+
+        actions_pt = translate(
+            actions
+        )
+
+        objects_pt = translate(
+            objects
+        )
+
+        environment_pt = translate(
+            environment
+        )
+
+        time_pt = translate(
+            time_labels
+        )
+
+        attributes_pt = translate(
+            attributes
+        )
+
+        parts = []
+
+        # --------------------------------------------------------
+        # Sujeito
+        # --------------------------------------------------------
+
+        if subjects_pt:
+            parts.append(
+                subjects_pt[0]
+            )
+
+            if actions_pt:
+                parts.append(
+                    actions_pt[0]
+                )
+
+            if objects_pt:
+                parts.append(
+                    "com "
+                    + objects_pt[0]
+                )
+
+        # --------------------------------------------------------
+        # Cena sem sujeito
+        # --------------------------------------------------------
+
+        else:
+            if environment:
+                parts.append(
+                    self._describe_environment(
+                        environment
+                    )
+                )
+
+            elif objects_pt:
+                parts.append(
+                    "Há "
+                    + ", ".join(
+                        objects_pt
+                    )
+                )
+
+            elif attributes_pt:
+                parts.append(
+                    "O ambiente está "
+                    + ", ".join(
+                        attributes_pt
+                    )
+                )
+
+        # --------------------------------------------------------
+        # Tempo / atmosfera
+        # --------------------------------------------------------
+
+        if time_pt:
+            parts.append(
+                time_pt[0]
+            )
+
+        if (
+            attributes_pt
+            and subjects_pt
+        ):
+            parts.append(
+                attributes_pt[0]
+            )
+
+        text = " ".join(
+            part.strip()
+            for part in parts
+            if part
+        ).strip()
+
+        if not text:
+            return ""
+
+        text = (
+            text[0].upper()
+            + text[1:]
+        )
+
+        if not text.endswith(
+            (".", "!", "?")
+        ):
+            text += "."
+
+        return text
+    
+    def _describe_environment(
+        self,
+        environment: List[str],
+    ) -> str:
+        environment_set = set(
+            environment
+        )
+
+        if (
+            "outdoor" in environment_set
+            and "ocean" in environment_set
+        ):
+            return (
+                "ambiente ao ar livre "
+                "com oceano"
+            )
+
+        if (
+            "outdoor" in environment_set
+            and "park" in environment_set
+        ):
+            return (
+                "ambiente ao ar livre "
+                "em um parque"
+            )
+
+        if (
+            "street" in environment_set
+            and "city" in environment_set
+        ):
+            return (
+                "ambiente ao ar livre "
+                "em uma rua da cidade"
+            )
+
+        if "ocean" in environment_set:
+            return (
+                "o oceano compõe o cenário"
+            )
+
+        if "park" in environment_set:
+            return (
+                "o cenário é um parque"
+            )
+
+        if "street" in environment_set:
+            return (
+                "o cenário é uma rua"
+            )
+
+        if "city" in environment_set:
+            return (
+                "o cenário é uma cidade"
+            )
+
+        if "outdoor" in environment_set:
+            return (
+                "o cenário é ao ar livre"
+            )
+
+        if "indoor" in environment_set:
+            return (
+                "o cenário é um ambiente interno"
+            )
+
+        translated = (
+            self.prompt_builder
+            .translate_values(
+                environment
+            )
+        )
+
+        if translated:
+            return (
+                "o cenário apresenta "
+                + ", ".join(
+                    translated
+                )
+            )
+
+        return ""

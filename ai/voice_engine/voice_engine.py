@@ -59,17 +59,13 @@ class VoiceEngine:
             volume=tts_volume,
         )
 
-        self.scheduler = (
-            PauseScheduler(
-                min_pause_duration=(
-                    min_pause_duration
-                )
+        self.scheduler = PauseScheduler(
+            min_pause_duration=(
+                min_pause_duration
             )
         )
 
-        self.mixer = (
-            VoiceAudioMixer()
-        )
+        self.mixer = VoiceAudioMixer()
 
         self.background_volume = (
             background_volume
@@ -90,6 +86,11 @@ class VoiceEngine:
         ],
         total_duration: float,
     ) -> VoiceEngineResult:
+
+        # ====================================================
+        # Monta todas as regiões sem fala
+        # ====================================================
+
         pauses = (
             self.scheduler
             .build_available_pauses(
@@ -102,9 +103,21 @@ class VoiceEngine:
             )
         )
 
-        cues = []
+        print(
+            "[Voice Engine DEBUG] "
+            f"Pausas disponíveis: {pauses}"
+        )
 
-        used_pause_indexes = set()
+        cues: List[VoiceCue] = []
+
+        # Intervalos já ocupados por audiodescrições.
+        # Isso permite várias descrições dentro
+        # da mesma pausa, sem sobreposição.
+        occupied_intervals = []
+
+        # ====================================================
+        # Processa cada descrição narrativa
+        # ====================================================
 
         for index, item in enumerate(
             narrative_timeline
@@ -112,7 +125,7 @@ class VoiceEngine:
             text = (
                 item.get(
                     "description",
-                    ""
+                    "",
                 )
                 or ""
             ).strip()
@@ -141,13 +154,20 @@ class VoiceEngine:
 
             tts_path = (
                 self.cues_dir
-                / (
-                    f"cue_"
-                    f"{index:04d}.wav"
-                )
+                / f"cue_{index:04d}.wav"
             )
 
             try:
+                # ============================================
+                # Gera TTS
+                # ============================================
+
+                print(
+                    "[Voice Engine] "
+                    f"Gerando cue #{index}: "
+                    f"{text}"
+                )
+
                 generated_path = (
                     self.tts.save_to_file(
                         text=text,
@@ -157,29 +177,55 @@ class VoiceEngine:
                     )
                 )
 
-                cue.audio_path = (
+                cue.audio_path = str(
                     generated_path
                 )
 
+                # ============================================
+                # Obtém duração real do TTS
+                # ============================================
+
                 narration_duration = (
                     self.mixer.get_duration(
-                        generated_path
+                        str(generated_path)
                     )
                 )
 
-                cue.tts_duration = (
-                    round(
-                        narration_duration,
-                        3,
-                    )
+                cue.tts_duration = round(
+                    narration_duration,
+                    3,
                 )
 
-                selected_pause = (
+                print(
+                    "[Voice Engine DEBUG] "
+                    f"Cue #{index}: "
+                    f"{cue.tts_duration}s"
+                )
+
+                # Um arquivo sem duração não é utilizável.
+                if narration_duration <= 0:
+                    cue.inserted = False
+                    cue.skip_reason = (
+                        "O TTS gerou um áudio "
+                        "com duração inválida."
+                    )
+
+                    cues.append(
+                        cue
+                    )
+
+                    continue
+
+                # ============================================
+                # Procura espaço livre
+                # ============================================
+
+                selected_slot = (
                     self.scheduler
-                    .find_pause(
+                    .find_slot(
                         pauses=pauses,
-                        used_pause_indexes=(
-                            used_pause_indexes
+                        occupied_intervals=(
+                            occupied_intervals
                         ),
                         narration_duration=(
                             narration_duration
@@ -193,69 +239,116 @@ class VoiceEngine:
                     )
                 )
 
-                if not selected_pause:
+                if not selected_slot:
+                    cue.inserted = False
+
                     cue.skip_reason = (
-                        "Nenhuma pausa "
-                        "suficientemente longa "
-                        "foi encontrada."
+                        "Nenhum espaço de áudio "
+                        "suficientemente longo "
+                        "foi encontrado."
                     )
 
                     cues.append(
                         cue
                     )
 
+                    print(
+                        "[Voice Engine] "
+                        f"Cue #{index} pulado: "
+                        f"{cue.skip_reason}"
+                    )
+
                     continue
 
-                pause_index = (
-                    selected_pause[
-                        "pause_index"
-                    ]
-                )
-
-                used_pause_indexes.add(
-                    pause_index
-                )
+                # ============================================
+                # Registra posição escolhida
+                # ============================================
 
                 cue.pause_start = (
-                    selected_pause[
-                        "start"
+                    selected_slot[
+                        "pause_start"
                     ]
                 )
 
                 cue.pause_end = (
-                    selected_pause[
-                        "end"
+                    selected_slot[
+                        "pause_end"
                     ]
                 )
 
                 cue.playback_start = (
-                    selected_pause[
+                    selected_slot[
                         "playback_start"
                     ]
                 )
 
                 cue.playback_end = (
-                    selected_pause[
+                    selected_slot[
                         "playback_end"
                     ]
                 )
 
                 cue.inserted = True
+                cue.skip_reason = None
+
+                # ============================================
+                # Reserva somente o trecho realmente ocupado
+                # ============================================
+
+                occupied_intervals.append(
+                    (
+                        selected_slot[
+                            "occupied_start"
+                        ],
+                        selected_slot[
+                            "occupied_end"
+                        ],
+                    )
+                )
+
+                occupied_intervals.sort(
+                    key=lambda interval: (
+                        interval[0]
+                    )
+                )
+
+                print(
+                    "[Voice Engine] "
+                    f"Cue #{index} inserido em "
+                    f"{cue.playback_start:.3f}s "
+                    f"→ {cue.playback_end:.3f}s"
+                )
 
             except Exception as error:
                 cue.inserted = False
 
-                cue.skip_reason = str(
-                    error
+                cue.skip_reason = (
+                    f"{type(error).__name__}: "
+                    f"{error}"
+                )
+
+                print(
+                    "[Voice Engine ERROR] "
+                    f"Cue #{index}: "
+                    f"{cue.skip_reason}"
                 )
 
             cues.append(
                 cue
             )
 
+        # ====================================================
+        # Mixagem final
+        # ====================================================
+
         modified_audio_path = (
             self.output_dir
             / "audio_with_description.wav"
+        )
+
+        print(
+            "[Voice Engine] "
+            "Iniciando mixagem final..."
         )
 
         modified_audio_path = (
@@ -276,6 +369,10 @@ class VoiceEngine:
             )
         )
 
+        # ====================================================
+        # Estatísticas
+        # ====================================================
+
         inserted = sum(
             1
             for cue in cues
@@ -287,6 +384,17 @@ class VoiceEngine:
             - inserted
         )
 
+        print(
+            "[Voice Engine] "
+            f"Descrições: {len(cues)} | "
+            f"Inseridas: {inserted} | "
+            f"Puladas: {skipped}"
+        )
+
+        # ====================================================
+        # Manifest
+        # ====================================================
+
         manifest_path = (
             self.manifest_dir
             / "voice_engine_manifest.json"
@@ -296,7 +404,7 @@ class VoiceEngine:
             source_audio_path=(
                 original_audio_path
             ),
-            modified_audio_path=(
+            modified_audio_path=str(
                 modified_audio_path
             ),
             manifest_path=str(
@@ -324,5 +432,11 @@ class VoiceEngine:
                 ensure_ascii=False,
                 indent=4,
             )
+
+        print(
+            "[Voice Engine] "
+            f"Áudio final: "
+            f"{modified_audio_path}"
+        )
 
         return result
