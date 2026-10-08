@@ -1,3 +1,4 @@
+
 from pathlib import Path
 from typing import Optional
 
@@ -5,22 +6,15 @@ from llama_cpp import Llama
 
 
 class LlamaCppClient:
-    """
-    Cliente local para geração de texto usando modelo GGUF via llama-cpp-python.
-
-    Exemplo de modelo:
-    models/Llama-3.2-1B-Instruct-Q6_K_L.gguf
-    """
-
     def __init__(
         self,
-        model_path: str = "models/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
-        n_ctx: int = 5480,
+        model_path: str = "data/models/qwen/qwen2.5-3b-instruct-q4_k_m.gguf",
+        n_ctx: int = 2048,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
-        temperature: float = 0.55,
-        top_p: float = 0.9,
-        max_tokens: int = 256,
+        temperature: float = 0.15,
+        top_p: float = 0.85,
+        max_tokens: int = 100,
         verbose: bool = False,
     ):
         self.model_path = model_path
@@ -39,6 +33,7 @@ class LlamaCppClient:
             n_ctx=self.n_ctx,
             n_threads=self.n_threads,
             n_gpu_layers=self.n_gpu_layers,
+            chat_format="chatml",
             verbose=self.verbose,
         )
 
@@ -46,60 +41,74 @@ class LlamaCppClient:
         if not prompt or not prompt.strip():
             return ""
 
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Você é um componente de verbalização "
+                    "visual do See2Sound. "
+                    "Sua função é transformar fatos visuais "
+                    "confirmados em uma frase natural de "
+                    "audiodescrição, em português brasileiro. "
+                    "Não deduza acontecimentos, intenções, "
+                    "emoções, posições ou relações entre "
+                    "objetos que não estejam explicitamente "
+                    "presentes na entrada. "
+                    "Use artigos, preposições, verbos de "
+                    "ligação e flexões gramaticais para "
+                    "formar frases completas. "
+                    "Não reproduza listas de palavras. "
+                    "Não escreva explicações. "
+                    "Retorne somente a audiodescrição."
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt.strip(),
+            },
+        ]
+
         try:
             response = self.llm.create_chat_completion(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Você é o verbalizador visual do sistema See2Sound. "
-                            "Sua tarefa é converter dados produzidos por modelos de visão computacional "
-                            "em uma frase natural de audiodescrição. "
-                            "Você NÃO deve imaginar a cena. "
-                            "Você NÃO deve completar informações ausentes. "
-                            "Você deve preservar gênero, ação, roupas, acessórios, ambiente e movimento "
-                            "quando essas informações estiverem disponíveis. "
-                            "Uma ação detectada nunca pode ser substituída por outra. "
-                            "Responda sempre em português do Brasil e apenas com a frase final."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt.strip(),
-                    },
-                ],
+                messages=messages,
                 temperature=self.temperature,
                 top_p=self.top_p,
                 max_tokens=self.max_tokens,
+                repeat_penalty=1.08,
             )
 
             return self._extract_response_text(response)
 
         except Exception as error:
             raise RuntimeError(
-                "Erro ao gerar texto com o modelo local GGUF: {}".format(error)
-            )
+                "Erro ao gerar audiodescrição com GGUF: "
+                f"{error}"
+            ) from error
 
     def _extract_response_text(self, response: dict) -> str:
         try:
-            return response["choices"][0]["message"]["content"].strip()
-        except Exception:
+            content = response["choices"][0]["message"]["content"]
+
+            if content is None:
+                return ""
+
+            return str(content).strip()
+
+        except (KeyError, IndexError, TypeError) as error:
             raise RuntimeError(
-                "Resposta inesperada do modelo local: {}".format(response)
-            )
+                f"Resposta inesperada do modelo: {response}"
+            ) from error
 
     def _validate_model_path(self) -> None:
         path = Path(self.model_path)
 
-        if not path.exists():
+        if not path.is_file():
             raise FileNotFoundError(
-                "Modelo GGUF não encontrado.\n"
-                "Caminho esperado: {}\n\n"
-                "Verifique se o arquivo foi baixado e colocado dentro da pasta models/."
-                .format(path.resolve())
+                "Modelo GGUF não encontrado: "
+                f"{path.resolve()}"
             )
 
         if path.suffix.lower() != ".gguf":
             raise ValueError(
-                "O arquivo informado não parece ser um modelo GGUF: {}".format(path)
+                f"Formato de modelo inválido: {path}"
             )

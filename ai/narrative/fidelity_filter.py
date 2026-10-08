@@ -427,9 +427,86 @@ class FidelityFilter:
                     "mas o cabelo curto não aparece na descrição."
                 )
 
-        # ---------------------------------------------------------
-        # Retorno
-        # ---------------------------------------------------------
+        
+        relation_terms = {
+            "segurando": ["holding"],
+            "segura": ["holding"],
+            "carregando": ["carrying"],
+            "carrega": ["carrying"],
+            "dirigindo": ["driving"],
+            "dirige": ["driving"],
+            "vestindo": ["wearing"],
+        }
+
+        for term, required_labels in relation_terms.items():
+            if not self._contains_word(
+                normalized_description,
+                term,
+            ):
+                continue
+
+            if not any(
+                self._normalize(required)
+                in available_terms
+                for required in required_labels
+            ):
+                warnings.append(
+                    "Ação inventada na descrição: "
+                    f"'{term}' não foi confirmada "
+                    "pelas labels."
+                )
+                
+        
+        subject_labels = {
+            "person", "woman", "man",
+            "child", "boy", "girl",
+            "people", "dog", "cat", "animal"
+        }
+
+        human_actions = {
+            "walking", "running",
+            "standing", "sitting",
+            "working", "playing",
+            "dancing", "reading",
+            "writing", "holding"
+        }
+
+        has_subject = bool(
+            subject_labels.intersection(
+                normalized_labels
+            )
+        )
+
+        if not has_subject:
+            for action in human_actions:
+                if action in normalized_labels:
+                    warnings.append(
+                        "Contradição de ação: "
+                        f"'{action}' foi detectada "
+                        "sem um sujeito identificado."
+                    )
+                    break
+
+        if re.search(
+            r"\b(eu|meu|minha|nós|nosso|nossa)\b",
+            normalized_description
+        ):
+            warnings.append(
+                "Contradição narrativa: "
+                "a audiodescrição utiliza primeira pessoa."
+            )
+
+        if re.search(
+            r"\b(guarda chuva|janela|bicicleta)\s+"
+            r"(esta\s+)?(correndo|caminhando|"
+            r"corre|caminha)\b",
+            normalized_description
+        ):
+            warnings.append(
+                "Contradição semântica: "
+                "movimento humano atribuído "
+                "a um objeto."
+            )
 
         return warnings
 

@@ -24,20 +24,19 @@ except ImportError:
 # Narrative e TTS
 # ============================================================
 
-
 def create_narrative_generator(
-    model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
+    model_path: str = (
+        "data/models/qwen/"
+        "qwen2.5-3b-instruct-q4_k_m.gguf"
+    ),
 ):
-    try:
-        from ai.narrative.narrative_generator import LLMNarrativeGenerator
-    except ImportError:
-        from ai.narrative.generator import LLMNarrativeGenerator
+    from ai.narrative.narrative_generator import (
+        LLMNarrativeGenerator
+    )
 
     return LLMNarrativeGenerator(
         model_path=model_path,
     )
-
-
 
 # ============================================================
 # Validação e diretórios
@@ -1550,9 +1549,10 @@ def process_video(
 
     # Narrative
     narrative_model_path: str = (
-        "data/models/llama/"
-        "Llama-3.2-1B-Instruct-Q6_K_L.gguf"
+        "data/models/qwen/"
+        "qwen2.5-3b-instruct-q4_k_m.gguf"
     ),
+
 
     # Voice Engine
     tts_rate: int = 170,

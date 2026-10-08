@@ -17,3 +17,5 @@ pyttsx3
 scipy
 ultralytics
 imageio-ffmpeg
+llama-cpp-python
+huggingface_hub

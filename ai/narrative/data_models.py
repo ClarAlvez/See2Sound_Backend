@@ -38,20 +38,18 @@ class SceneContext:
     unknown: List[str] = field(default_factory=list)
 
 
+
 @dataclass
 class NarrativeInput:
-    """
-    Entrada principal do módulo narrativo.
-
-    Normalmente será criada a partir de uma saída da Spectra.
-    """
-
     labels: List[str]
     start_time: Optional[float] = None
     end_time: Optional[float] = None
     previous_description: Optional[str] = None
     confidence: Dict[str, float] = field(default_factory=dict)
     context: Dict[str, Any] = field(default_factory=dict)
+    narrative_history: List[Dict[str, Any]] = field(
+        default_factory=list
+    )
 
 
 @dataclass

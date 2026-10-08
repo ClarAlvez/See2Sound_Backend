@@ -1,208 +1,465 @@
+
+import re
+import unicodedata
+
 from typing import Any, Dict, List, Optional
 
 from ai.narrative.data_models import (
     NarrativeInput,
     NarrativeOutput,
-    SceneContext,
     SpectraScene,
 )
-from ai.narrative.fidelity_filter import FidelityFilter
 from ai.narrative.llm_client import LlamaCppClient
-from ai.narrative.prompt_builder import NarrativePromptBuilder
-from ai.narrative.redundancy_filter import RedundancyFilter
-from ai.narrative.scene_context_builder import SceneContextBuilder
 
 
 class LLMNarrativeGenerator:
-    """
-    Gerador narrativo da Sprint 5.
 
-    Fluxo:
-    Spectra labels
-    ↓
-    organização semântica da cena
-    ↓
-    prompt controlado
-    ↓
-    modelo local GGUF via llama.cpp
-    ↓
-    limpeza da resposta
-    ↓
-    filtro de fidelidade
-    ↓
-    filtro de redundância
-    ↓
-    timeline textual pronta para virar áudio
-    """
+    SUBJECTS = {
+        "woman": "Uma mulher",
+        "man": "Um homem",
+        "girl": "Uma menina",
+        "boy": "Um menino",
+        "child": "Uma criança",
+        "dog": "Um cachorro",
+        "cat": "Um gato",
+        "person": "Uma pessoa",
+    }
+
+    SUBJECT_PRIORITY = [
+        "woman", "man", "girl", "boy",
+        "child", "dog", "cat", "person"
+    ]
+
+    ACTIONS = {
+        "walking": "caminha",
+        "running": "corre",
+        "standing": "está em pé",
+        "sitting": "está sentada",
+    }
+
+    APPEARANCE = {
+        "long_hair": "de cabelos longos",
+        "short_hair": "de cabelos curtos",
+        "black_clothes": "de roupas pretas",
+        "white_clothes": "de roupas brancas",
+        "glasses": "de óculos",
+    }
+
+    ENVIRONMENTS = {
+        "street": "em uma rua",
+        "road": "em uma estrada",
+        "city": "em uma cidade",
+        "outdoor": "ao ar livre",
+        "indoor": "em um ambiente interno",
+    }
+
+    OBJECTS = {
+        "umbrella": "um guarda-chuva",
+        "backpack": "uma mochila",
+        "bicycle": "uma bicicleta",
+        "car": "um carro",
+        "window": "uma janela",
+    }
 
     def __init__(
         self,
-        model_path: str = "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
+        model_path: str = (
+            "data/models/qwen/"
+            "qwen2.5-3b-instruct-q4_k_m.gguf"
+        ),
         similarity_threshold: float = 0.75,
-        n_ctx: int = 5480,
+        n_ctx: int = 2048,
         n_threads: Optional[int] = None,
         n_gpu_layers: int = 0,
+        use_llm: bool = False,
     ):
-        self.client = LlamaCppClient(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_threads=n_threads,
-            n_gpu_layers=n_gpu_layers,
-            temperature=0.0,
-            top_p=1.0,
-            max_tokens=48,
-            verbose=False,
+        self.use_llm = use_llm
+        self.client = None
+
+        if self.use_llm:
+            self.client = LlamaCppClient(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=n_threads,
+                n_gpu_layers=n_gpu_layers,
+                temperature=0.1,
+                top_p=0.8,
+                max_tokens=80,
+                verbose=False,
+            )
+
+    def _normalize(self, text: str) -> str:
+        text = unicodedata.normalize(
+            "NFD",
+            text.lower()
         )
 
-        self.scene_context_builder = SceneContextBuilder()
-        self.prompt_builder = NarrativePromptBuilder()
-        self.fidelity_filter = FidelityFilter()
-
-        self.redundancy_filter = RedundancyFilter(
-            label_similarity_threshold=similarity_threshold,
-            text_similarity_threshold=0.85,
+        text = "".join(
+            character
+            for character in text
+            if unicodedata.category(character) != "Mn"
         )
 
-    def generate(self, narrative_input: NarrativeInput) -> NarrativeOutput:
-        cleaned_labels = self._clean_labels(narrative_input.labels)
+        return re.sub(
+            r"\s+", " ",
+            re.sub(r"[^\w\s]", " ", text)
+        ).strip()
 
-        if not cleaned_labels:
+    def _get_confidence(
+        self,
+        label: str,
+        confidence: Dict[str, Any],
+    ) -> Optional[float]:
+
+        if not isinstance(confidence, dict):
+            return None
+
+        scores = []
+
+        for key, value in confidence.items():
+            if (
+                key == label
+                or key.endswith("." + label)
+            ):
+                try:
+                    scores.append(float(value))
+                except (TypeError, ValueError):
+                    pass
+
+        return max(scores) if scores else None
+
+    def _select_facts(
+        self,
+        narrative_input: NarrativeInput,
+    ) -> Dict[str, Any]:
+
+        labels = set(
+            label.strip().lower()
+            for label in narrative_input.labels
+            if isinstance(label, str)
+        )
+
+        confidence = narrative_input.confidence or {}
+
+        def accepted(label, threshold):
+            if label not in labels:
+                return False
+
+            score = self._get_confidence(
+                label,
+                confidence
+            )
+
+            if score is None:
+                return True
+
+            return score >= threshold
+
+        subject = None
+
+        for label in self.SUBJECT_PRIORITY:
+            if accepted(label, 0.65):
+                subject = label
+                break
+
+        action = None
+
+        if subject is not None:
+            action_candidates = [
+                label
+                for label in self.ACTIONS
+                if accepted(label, 0.70)
+            ]
+
+            if action_candidates:
+                action = max(
+                    action_candidates,
+                    key=lambda label: (
+                        self._get_confidence(
+                            label,
+                            confidence
+                        ) or 0.0
+                    )
+                )
+
+        appearance = []
+
+        if subject in {
+            "person", "woman", "man",
+            "boy", "girl", "child"
+        }:
+            for label in [
+                "long_hair",
+                "short_hair",
+                "black_clothes",
+                "white_clothes",
+                "glasses",
+            ]:
+                if accepted(label, 0.72):
+                    appearance.append(label)
+
+            if (
+                "long_hair" in appearance
+                and "short_hair" in appearance
+            ):
+                appearance = [
+                    label
+                    for label in appearance
+                    if label != "short_hair"
+                ]
+
+            if (
+                "black_clothes" in appearance
+                and "white_clothes" in appearance
+            ):
+                best_color = max(
+                    ["black_clothes", "white_clothes"],
+                    key=lambda label: (
+                        self._get_confidence(
+                            label, confidence
+                        ) or 0
+                    )
+                )
+
+                appearance = [
+                    label
+                    for label in appearance
+                    if label not in {
+                        "black_clothes",
+                        "white_clothes"
+                    } or label == best_color
+                ]
+
+        environment = None
+
+        for label in [
+            "street", "road", "city",
+            "indoor", "outdoor"
+        ]:
+            if accepted(label, 0.70):
+                environment = label
+                break
+
+        objects = []
+
+        for label in [
+            "umbrella",
+            "backpack",
+            "bicycle",
+            "car",
+            "window",
+        ]:
+            if accepted(label, 0.80):
+                objects.append(label)
+
+        atmosphere = None
+
+        if accepted("rainy", 0.80):
+            atmosphere = "rainy"
+        elif accepted("cloudy", 0.80):
+            atmosphere = "cloudy"
+
+        return {
+            "subject": subject,
+            "action": action,
+            "appearance": appearance[:2],
+            "environment": environment,
+            "objects": objects[:2],
+            "atmosphere": atmosphere,
+        }
+
+    def _build_base_description(
+        self,
+        facts: Dict[str, Any],
+    ) -> str:
+
+        subject = facts["subject"]
+        action = facts["action"]
+        appearance = facts["appearance"]
+        environment = facts["environment"]
+        objects = facts["objects"]
+        atmosphere = facts["atmosphere"]
+
+        if subject:
+            text = self.SUBJECTS[subject]
+
+            if appearance:
+                text += " " + " e ".join(
+                    self.APPEARANCE[label]
+                    for label in appearance
+                )
+
+            if action:
+                action_text = self.ACTIONS[action]
+
+                if action == "sitting":
+                    if subject in {"man", "boy"}:
+                        action_text = "está sentado"
+                    elif subject in {"dog", "cat"}:
+                        action_text = "está sentado"
+
+                text += " " + action_text
+
+            else:
+                text += " aparece"
+
+            if environment:
+                text += " " + self.ENVIRONMENTS[
+                    environment
+                ]
+
+            if objects:
+                text += ", enquanto " + (
+                    self.OBJECTS[objects[0]]
+                    + " também aparece na cena"
+                )
+
+            return text + "."
+
+        if environment:
+            if environment == "street":
+                text = "Uma rua aparece na cena"
+            elif environment == "road":
+                text = "Uma estrada aparece na cena"
+            elif environment == "city":
+                text = "Uma cidade aparece na cena"
+            elif environment == "indoor":
+                text = "A cena mostra um ambiente interno"
+            else:
+                text = "A cena mostra um ambiente externo"
+
+            if atmosphere == "rainy":
+                text += ", em meio à chuva"
+            elif atmosphere == "cloudy":
+                text += ", sob tempo nublado"
+
+            return text + "."
+
+        if objects:
+            object_text = self.OBJECTS[objects[0]]
+
+            return (
+                object_text[0].upper()
+                + object_text[1:]
+                + " aparece na cena."
+            )
+
+        return ""
+
+    def _safe_llm_rewrite(
+        self,
+        base_description: str,
+    ) -> str:
+
+        if not self.use_llm or self.client is None:
+            return base_description
+
+        prompt = (
+            "Reescreva esta frase em português natural. "
+            "Não acrescente nem retire fatos. "
+            "Não mude sujeitos, ações ou objetos. "
+            "Retorne somente uma frase.\n"
+            f"Frase: {base_description}"
+        )
+
+        try:
+            raw = self.client.generate(prompt)
+            candidate = raw.strip()
+
+            if not candidate:
+                return base_description
+
+            if any(
+                char in candidate
+                for char in "{}[]\n"
+            ):
+                return base_description
+
+            if len(re.findall(
+                r"[.!?]", candidate
+            )) > 1:
+                return base_description
+
+            base_words = self._normalize(
+                base_description
+            ).split()
+
+            candidate_words = self._normalize(
+                candidate
+            ).split()
+
+            allowed_connectors = {
+                "a", "o", "as", "os",
+                "um", "uma", "de", "do",
+                "da", "em", "no", "na",
+                "e", "com", "ao"
+            }
+
+            allowed_words = (
+                set(base_words)
+                | allowed_connectors
+            )
+
+            if any(
+                word not in allowed_words
+                for word in candidate_words
+            ):
+                return base_description
+
+            required_words = {
+                word
+                for word in base_words
+                if word not in allowed_connectors
+            }
+
+            if not required_words.issubset(
+                set(candidate_words)
+            ):
+                return base_description
+
+            return candidate
+
+        except Exception as error:
+            print(
+                "[Narrative LLM] "
+                f"Reformulação ignorada: {error}"
+            )
+
+            return base_description
+
+    def generate(
+        self,
+        narrative_input: NarrativeInput,
+    ) -> NarrativeOutput:
+
+        labels = list(dict.fromkeys(
+            label.strip().lower()
+            for label in narrative_input.labels
+            if isinstance(label, str)
+            and label.strip()
+        ))
+
+        facts = self._select_facts(
+            narrative_input
+        )
+
+        base_description = (
+            self._build_base_description(facts)
+        )
+
+        description = base_description
+
+        if not description:
             return NarrativeOutput(
                 description="",
                 start_time=narrative_input.start_time,
                 end_time=narrative_input.end_time,
-                labels=[],
-                scene_context={},
-                skipped=True,
-                skip_reason="Nenhuma label recebida da Spectra.",
-            )
-
-        scene_context = self.scene_context_builder.build(cleaned_labels)
-        scene_context_dict = self.scene_context_builder.to_prompt_dict(scene_context)
-
-        prompt_data = self._build_prompt_data(
-            narrative_input=narrative_input,
-            cleaned_labels=cleaned_labels,
-            scene_context_dict=scene_context_dict,
-        )
-
-        prompt = self.prompt_builder.build(prompt_data)
-
-        raw_description = self.client.generate(prompt)
-        description = self._clean_model_output(raw_description)
-
-        if not description:
-            fallback_description = (
-                self._build_factual_fallback(
-                    scene_context_dict
-                )
-            )
-
-            if fallback_description:
-                return NarrativeOutput(
-                    description=(
-                        fallback_description
-                    ),
-                    start_time=(
-                        narrative_input.start_time
-                    ),
-                    end_time=(
-                        narrative_input.end_time
-                    ),
-                    labels=cleaned_labels,
-                    scene_context=(
-                        scene_context_dict
-                    ),
-                    skipped=False,
-                    skip_reason=None,
-                )
-
-            return NarrativeOutput(
-                description="",
-                start_time=(
-                    narrative_input.start_time
-                ),
-                end_time=(
-                    narrative_input.end_time
-                ),
-                labels=cleaned_labels,
-                scene_context=(
-                    scene_context_dict
-                ),
+                labels=labels,
+                scene_context=facts,
                 skipped=True,
                 skip_reason=(
-                    "O modelo não gerou "
-                    "uma descrição válida."
-                ),
-            )
-
-        fidelity_warnings = self.fidelity_filter.validate(
-            description=description,
-            labels=cleaned_labels,
-            context=scene_context_dict,
-        )
-
-        critical_warnings = [
-            warning
-            for warning in fidelity_warnings
-            if (
-                warning.startswith("Possível detalhe inventado")
-                or warning.startswith("Contradição")
-                or warning.startswith("Ação inventada")
-                or warning.startswith("Objeto inventado")
-                or warning.startswith("Sujeito inventado")
-            )
-        ]
-
-        if critical_warnings:
-            fallback_description = (
-                self._build_factual_fallback(
-                    scene_context_dict
-                )
-            )
-
-            if fallback_description:
-                return NarrativeOutput(
-                    description=(
-                        fallback_description
-                    ),
-                    start_time=(
-                        narrative_input.start_time
-                    ),
-                    end_time=(
-                        narrative_input.end_time
-                    ),
-                    labels=cleaned_labels,
-                    scene_context=(
-                        scene_context_dict
-                    ),
-                    skipped=False,
-                    skip_reason=None,
-                    fidelity_warnings=(
-                        fidelity_warnings
-                    ),
-                )
-
-            return NarrativeOutput(
-                description="",
-                start_time=(
-                    narrative_input.start_time
-                ),
-                end_time=(
-                    narrative_input.end_time
-                ),
-                labels=cleaned_labels,
-                scene_context=(
-                    scene_context_dict
-                ),
-                skipped=True,
-                skip_reason=(
-                    "Descrição rejeitada "
-                    "por inconsistência factual "
-                    "e não foi possível gerar fallback."
-                ),
-                fidelity_warnings=(
-                    fidelity_warnings
+                    "Fatos insuficientes para "
+                    "uma descrição confiável."
                 ),
             )
 
@@ -210,77 +467,344 @@ class LLMNarrativeGenerator:
             description=description,
             start_time=narrative_input.start_time,
             end_time=narrative_input.end_time,
-            labels=cleaned_labels,
-            scene_context=scene_context_dict,
+            labels=labels,
+            scene_context=facts,
             skipped=False,
             skip_reason=None,
-            fidelity_warnings=fidelity_warnings,
+            fidelity_warnings=[],
         )
         
+    
+    def _build_delta_description(
+        self,
+        current: Dict[str, Any],
+        previous: Optional[Dict[str, Any]],
+    ) -> str:
 
+        subject = current.get("subject")
+        action = current.get("action")
+        appearance = current.get("appearance", [])
+        environment = current.get("environment")
+        objects = current.get("objects", [])
+        atmosphere = current.get("atmosphere")
+
+        if not subject:
+            return ""
+
+        if previous is None:
+            return self._build_base_description(current)
+
+        old_subject = previous.get("subject")
+        old_action = previous.get("action")
+        old_appearance = previous.get("appearance", [])
+        old_environment = previous.get("environment")
+        old_objects = previous.get("objects", [])
+        old_atmosphere = previous.get("atmosphere")
+
+        human_subjects = {
+            "person", "woman", "man",
+            "girl", "boy", "child"
+        }
+
+        same_category = (
+            subject == old_subject
+            or (
+                subject in human_subjects
+                and old_subject in human_subjects
+            )
+        )
+
+        if not same_category:
+            return self._build_base_description(current)
+
+        new_appearance = [
+            item
+            for item in appearance
+            if item not in old_appearance
+        ]
+
+        new_objects = [
+            item
+            for item in objects
+            if item not in old_objects
+        ]
+
+        action_changed = (
+            action is not None
+            and action != old_action
+        )
+
+        environment_changed = (
+            environment is not None
+            and environment != old_environment
+        )
+
+        atmosphere_changed = (
+            atmosphere is not None
+            and atmosphere != old_atmosphere
+        )
+
+        subject_refined = (
+            old_subject == "person"
+            and subject in {
+                "woman", "man", "girl",
+                "boy", "child"
+            }
+        )
+
+        if not any([
+            action_changed,
+            environment_changed,
+            atmosphere_changed,
+            new_appearance,
+            new_objects,
+            subject_refined,
+        ]):
+            return ""
+
+        if subject_refined:
+            references = {
+                "woman": "A pessoa, identificada como mulher,",
+                "man": "A pessoa, identificada como homem,",
+                "girl": "A pessoa, identificada como menina,",
+                "boy": "A pessoa, identificada como menino,",
+                "child": "A pessoa, identificada como criança,",
+            }
+
+            text = references.get(
+                subject,
+                self.SUBJECTS[subject]
+            )
+        else:
+            references = {
+                "woman": "A mulher",
+                "man": "O homem",
+                "girl": "A menina",
+                "boy": "O menino",
+                "child": "A criança",
+                "person": "A pessoa",
+                "dog": "O cachorro",
+                "cat": "O gato",
+            }
+
+            text = references.get(
+                subject,
+                self.SUBJECTS.get(
+                    subject, "Uma pessoa"
+                )
+            )
+
+        if new_appearance:
+            details = [
+                self.APPEARANCE[item]
+                for item in new_appearance
+                if item in self.APPEARANCE
+            ]
+
+            if details:
+                text += " " + " e ".join(details)
+
+        if action_changed:
+            verb = self.ACTIONS[action]
+
+            if action == "sitting" and subject in {
+                "man", "boy", "dog", "cat"
+            }:
+                verb = "está sentado"
+
+            text += " " + verb
+
+        else:
+            if environment_changed:
+                text += " aparece"
+            elif new_objects:
+                text += " aparece novamente"
+            else:
+                text += " é vista"
+
+        if environment_changed:
+            text += " " + self.ENVIRONMENTS[environment]
+
+        if new_objects:
+            names = [
+                self.OBJECTS[item]
+                for item in new_objects
+                if item in self.OBJECTS
+            ]
+
+            if names:
+                if len(names) == 1:
+                    text += (
+                        ", enquanto "
+                        + names[0]
+                        + " surge na imagem"
+                    )
+                else:
+                    text += (
+                        ", com "
+                        + " e ".join(names)
+                        + " também visíveis"
+                    )
+
+        if atmosphere_changed:
+            if atmosphere == "rainy":
+                text += ", em meio à chuva"
+            elif atmosphere == "cloudy":
+                text += ", sob tempo nublado"
+
+        return text.strip() + "."
+
+    
+    
     def generate_batch(
         self,
         inputs: List[NarrativeInput],
         skip_similar_labels: bool = True,
         skip_similar_text: bool = True,
     ) -> List[NarrativeOutput]:
+
         outputs = []
 
-        previous_labels = []
-        previous_description = ""
+        last_narrated_facts = None
+        last_narrated_end = None
+        last_description = ""
 
-        for item in inputs:
-            current_labels = self._clean_labels(item.labels)
+        narrated_appearance = set()
+        narrated_objects = set()
 
-            if skip_similar_labels:
-                labels_are_similar = self.redundancy_filter.is_too_similar_by_labels(
-                    previous_labels=previous_labels,
-                    current_labels=current_labels,
-                )
+        max_memory_gap = 8.0
+        time_tolerance = 0.15
 
-                if labels_are_similar:
-                    outputs.append(
-                        NarrativeOutput(
-                            description="",
-                            start_time=item.start_time,
-                            end_time=item.end_time,
-                            labels=current_labels,
-                            scene_context={},
-                            skipped=True,
-                            skip_reason="Cena muito parecida com a anterior.",
-                        )
-                    )
-                    continue
-
-            item.previous_description = previous_description
-
+        for index, item in enumerate(inputs):
             output = self.generate(item)
+            current_facts = output.scene_context
 
             if output.skipped:
                 outputs.append(output)
                 continue
 
-            if previous_description:
-                same_text = self.redundancy_filter.is_exact_same_text(
-                    previous_description=previous_description,
-                    current_description=output.description,
+            if current_facts.get("subject") is None:
+                output.skipped = True
+                output.description = ""
+                output.skip_reason = (
+                    "Cena sem sujeito principal "
+                    "ou mudança confirmada."
+                )
+                outputs.append(output)
+                continue
+
+            gap = None
+
+            if (
+                last_narrated_end is not None
+                and item.start_time is not None
+            ):
+                gap = (
+                    float(item.start_time)
+                    - float(last_narrated_end)
                 )
 
-                similar_text = self.redundancy_filter.is_too_similar_by_text(
-                    previous_description=previous_description,
-                    current_description=output.description,
+            memory_valid = (
+                last_narrated_facts is not None
+                and gap is not None
+                and -time_tolerance <= gap <= max_memory_gap
+            )
+
+            previous = (
+                last_narrated_facts
+                if memory_valid
+                else None
+            )
+
+            print(
+                f"\n[Narrative MEMORY] Cena {index + 1}"
+            )
+            print("  Início:", item.start_time)
+            print("  Último fim:", last_narrated_end)
+            print("  Diferença:", gap)
+            print("  Memória válida:", memory_valid)
+
+            if previous is None:
+                narrated_appearance.clear()
+                narrated_objects.clear()
+
+            comparison_facts = None
+
+            if previous is not None:
+                comparison_facts = dict(previous)
+                comparison_facts["appearance"] = list(
+                    narrated_appearance
+                )
+                comparison_facts["objects"] = list(
+                    narrated_objects
                 )
 
-                if same_text or (skip_similar_text and similar_text):
-                    output.skipped = True
-                    output.skip_reason = "Descrição muito parecida com a anterior."
-                    output.description = ""
+            description = self._build_delta_description(
+                current_facts,
+                comparison_facts
+            )
+
+            if not description:
+                output.skipped = True
+                output.description = ""
+                output.skip_reason = (
+                    "Nenhuma informação nova relevante."
+                )
+                outputs.append(output)
+                continue
+
+            if (
+                last_description
+                and self._normalize(description)
+                == self._normalize(last_description)
+            ):
+                output.skipped = True
+                output.description = ""
+                output.skip_reason = (
+                    "Descrição repetida."
+                )
+                outputs.append(output)
+                continue
+
+            if self.use_llm:
+                description = self._safe_llm_rewrite(
+                    description
+                )
+
+            output.description = description
+
+            output.scene_context = {
+                **current_facts,
+                "narrative_mode": (
+                    "delta" if previous else "initial"
+                ),
+                "reference_scene": (
+                    last_narrated_end
+                    if previous else None
+                ),
+            }
+
+            last_narrated_facts = dict(
+                current_facts
+            )
+
+            last_narrated_end = item.end_time
+            last_description = description
+
+            narrated_appearance.update(
+                current_facts.get("appearance", [])
+            )
+            narrated_objects.update(
+                current_facts.get("objects", [])
+            )
 
             outputs.append(output)
 
-            if not output.skipped and output.description:
-                previous_labels = current_labels
-                previous_description = output.description
+            print(
+                "  Modo:",
+                output.scene_context["narrative_mode"]
+            )
+            print("  Descrição:", description)
 
         return outputs
 
@@ -288,100 +812,54 @@ class LLMNarrativeGenerator:
         self,
         spectra_scenes: List[SpectraScene],
     ) -> List[NarrativeOutput]:
-        inputs = []
 
-        for scene in spectra_scenes:
-            inputs.append(
-                NarrativeInput(
-                    labels=scene.labels,
-                    start_time=scene.start_time,
-                    end_time=scene.end_time,
-                    confidence=scene.confidence,
-                    context=scene.context,
-                )
+        return self.generate_batch([
+            NarrativeInput(
+                labels=scene.labels,
+                start_time=scene.start_time,
+                end_time=scene.end_time,
+                confidence=scene.confidence,
+                context=scene.context,
             )
-
-        return self.generate_batch(inputs)
+            for scene in spectra_scenes
+        ])
 
     def generate_timeline_from_dicts(
         self,
         spectra_outputs: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        inputs = []
 
-        for item in spectra_outputs:
-            inputs.append(
-                NarrativeInput(
-                    labels=item.get(
-                        "labels",
-                        [],
-                    ),
-                    start_time=item.get(
-                        "start_time"
-                    ),
-                    end_time=item.get(
-                        "end_time"
-                    ),
-                    confidence=item.get(
-                        "confidence",
-                        {},
-                    ),
-                    context=item.get(
-                        "context",
-                        {},
-                    ),
-                )
+        inputs = [
+            NarrativeInput(
+                labels=item.get("labels", []),
+                start_time=item.get("start_time"),
+                end_time=item.get("end_time"),
+                confidence=item.get("confidence", {}),
+                context=item.get("context", {}),
             )
+            for item in spectra_outputs
+        ]
 
         print(
             "[Narrative DEBUG] "
             f"Entradas recebidas: {len(inputs)}"
         )
 
-        outputs = self.generate_batch(
-            inputs
-        )
-
-        print(
-            "[Narrative DEBUG] "
-            f"Saídas produzidas: {len(outputs)}"
-        )
+        outputs = self.generate_batch(inputs)
 
         valid_outputs = []
 
-        for index, output in enumerate(
-            outputs
-        ):
+        for index, output in enumerate(outputs):
             print(
-                "\n"
-                "[Narrative DEBUG] "
-                f"Output #{index}"
+                f"\n[Narrative DEBUG] Cena {index + 1}"
             )
-
             print(
-                "  labels:",
-                output.labels,
+                "  fatos selecionados:",
+                output.scene_context
             )
-
-            print(
-                "  skipped:",
-                output.skipped,
-            )
-
-            print(
-                "  motivo:",
-                output.skip_reason,
-            )
-
-            print(
-                "  descrição:",
-                output.description,
-            )
-
-            print(
-                "  fidelity_warnings:",
-                output.fidelity_warnings,
-            )
+            print("  descrição:", output.description)
+            print("  skipped:", output.skipped)
+            print("  motivo:", output.skip_reason)
 
             if not output.skipped:
                 valid_outputs.append(
@@ -389,348 +867,8 @@ class LLMNarrativeGenerator:
                 )
 
         print(
-            "\n"
             "[Narrative DEBUG] "
-            f"Descrições válidas: "
-            f"{len(valid_outputs)}"
+            f"Descrições válidas: {len(valid_outputs)}"
         )
 
         return valid_outputs
-
-    def _build_prompt_data(
-        self,
-        narrative_input: NarrativeInput,
-        cleaned_labels: List[str],
-        scene_context_dict: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        return {
-            "labels": cleaned_labels,
-            "subjects": scene_context_dict.get("subjects", []),
-            "actions": scene_context_dict.get("actions", []),
-            "objects": scene_context_dict.get("objects", []),
-            "environment": scene_context_dict.get("environment", []),
-            "time": scene_context_dict.get("time", []),
-            "attributes": scene_context_dict.get("attributes", []),
-        }
-
-    def _clean_labels(self, labels: List[str]) -> List[str]:
-        cleaned_labels = []
-
-        for label in labels:
-            if not isinstance(label, str):
-                continue
-
-            clean_label = label.strip().lower()
-
-            if clean_label and clean_label not in cleaned_labels:
-                cleaned_labels.append(clean_label)
-
-        return cleaned_labels
-
-    def _clean_model_output(self, text: str) -> str:
-        if not text:
-            return ""
-
-        text = text.strip()
-
-        unwanted_prefixes = [
-            "Audiodescrição:",
-            "Descrição:",
-            "Saída:",
-            "Resposta:",
-            "Frase:",
-            "Texto:",
-        ]
-
-        for prefix in unwanted_prefixes:
-            if text.lower().startswith(prefix.lower()):
-                text = text[len(prefix):].strip()
-
-        lines = [
-            line.strip()
-            for line in text.splitlines()
-            if line.strip()
-        ]
-
-        if lines:
-            text = lines[0]
-
-        text = text.strip()
-        text = text.strip('"')
-        text = text.strip("'")
-        text = text.strip("“")
-        text = text.strip("”")
-
-        text = self._remove_list_marker(text)
-
-        if not text:
-            return ""
-
-        if not text.endswith((".", "!", "?")):
-            text += "."
-
-        text = text[0].upper() + text[1:]
-
-        return text
-
-    def _remove_list_marker(self, text: str) -> str:
-        markers = [
-            "- ",
-            "* ",
-            "• ",
-            "1. ",
-            "2. ",
-            "3. ",
-        ]
-
-        for marker in markers:
-            if text.startswith(marker):
-                return text[len(marker):].strip()
-
-        return text
-    
-    def _build_factual_fallback(
-        self,
-        scene_context_dict: Dict[str, Any],
-    ) -> str:
-        subjects = scene_context_dict.get(
-            "subjects",
-            [],
-        )
-
-        actions = scene_context_dict.get(
-            "actions",
-            [],
-        )
-
-        objects = scene_context_dict.get(
-            "objects",
-            [],
-        )
-
-        environment = scene_context_dict.get(
-            "environment",
-            [],
-        )
-
-        time_labels = scene_context_dict.get(
-            "time",
-            [],
-        )
-
-        attributes = scene_context_dict.get(
-            "attributes",
-            [],
-        )
-
-        translations = (
-            self.prompt_builder.LABEL_TO_PT
-        )
-
-        def translate(
-            values: List[str],
-        ) -> List[str]:
-            return [
-                translations.get(
-                    value,
-                    value.replace(
-                        "_",
-                        " ",
-                    ),
-                )
-                for value in values
-            ]
-
-        subjects_pt = translate(
-            subjects
-        )
-
-        actions_pt = translate(
-            actions
-        )
-
-        objects_pt = translate(
-            objects
-        )
-
-        environment_pt = translate(
-            environment
-        )
-
-        time_pt = translate(
-            time_labels
-        )
-
-        attributes_pt = translate(
-            attributes
-        )
-
-        parts = []
-
-        # --------------------------------------------------------
-        # Sujeito
-        # --------------------------------------------------------
-
-        if subjects_pt:
-            parts.append(
-                subjects_pt[0]
-            )
-
-            if actions_pt:
-                parts.append(
-                    actions_pt[0]
-                )
-
-            if objects_pt:
-                parts.append(
-                    "com "
-                    + objects_pt[0]
-                )
-
-        # --------------------------------------------------------
-        # Cena sem sujeito
-        # --------------------------------------------------------
-
-        else:
-            if environment:
-                parts.append(
-                    self._describe_environment(
-                        environment
-                    )
-                )
-
-            elif objects_pt:
-                parts.append(
-                    "Há "
-                    + ", ".join(
-                        objects_pt
-                    )
-                )
-
-            elif attributes_pt:
-                parts.append(
-                    "O ambiente está "
-                    + ", ".join(
-                        attributes_pt
-                    )
-                )
-
-        # --------------------------------------------------------
-        # Tempo / atmosfera
-        # --------------------------------------------------------
-
-        if time_pt:
-            parts.append(
-                time_pt[0]
-            )
-
-        if (
-            attributes_pt
-            and subjects_pt
-        ):
-            parts.append(
-                attributes_pt[0]
-            )
-
-        text = " ".join(
-            part.strip()
-            for part in parts
-            if part
-        ).strip()
-
-        if not text:
-            return ""
-
-        text = (
-            text[0].upper()
-            + text[1:]
-        )
-
-        if not text.endswith(
-            (".", "!", "?")
-        ):
-            text += "."
-
-        return text
-    
-    def _describe_environment(
-        self,
-        environment: List[str],
-    ) -> str:
-        environment_set = set(
-            environment
-        )
-
-        if (
-            "outdoor" in environment_set
-            and "ocean" in environment_set
-        ):
-            return (
-                "ambiente ao ar livre "
-                "com oceano"
-            )
-
-        if (
-            "outdoor" in environment_set
-            and "park" in environment_set
-        ):
-            return (
-                "ambiente ao ar livre "
-                "em um parque"
-            )
-
-        if (
-            "street" in environment_set
-            and "city" in environment_set
-        ):
-            return (
-                "ambiente ao ar livre "
-                "em uma rua da cidade"
-            )
-
-        if "ocean" in environment_set:
-            return (
-                "o oceano compõe o cenário"
-            )
-
-        if "park" in environment_set:
-            return (
-                "o cenário é um parque"
-            )
-
-        if "street" in environment_set:
-            return (
-                "o cenário é uma rua"
-            )
-
-        if "city" in environment_set:
-            return (
-                "o cenário é uma cidade"
-            )
-
-        if "outdoor" in environment_set:
-            return (
-                "o cenário é ao ar livre"
-            )
-
-        if "indoor" in environment_set:
-            return (
-                "o cenário é um ambiente interno"
-            )
-
-        translated = (
-            self.prompt_builder
-            .translate_values(
-                environment
-            )
-        )
-
-        if translated:
-            return (
-                "o cenário apresenta "
-                + ", ".join(
-                    translated
-                )
-            )
-
-        return ""
