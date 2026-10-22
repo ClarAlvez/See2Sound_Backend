@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from API.core.config import settings
+from API.core.config import (
+    settings,
+)
+
 from API.services.job_store import (
     update_job,
     utc_now,
@@ -14,6 +17,10 @@ def run_generation_job(
     video_path: str,
     options: Dict[str, Any],
 ):
+    # ========================================================
+    # Estado inicial
+    # ========================================================
+
     update_job(
         job_id,
         status="processing",
@@ -36,31 +43,245 @@ def run_generation_job(
             process_video,
         )
 
+        # ====================================================
+        # Opções
+        # ====================================================
+
+        run_spectra = options.get(
+            "run_spectra",
+            True,
+        )
+
+        run_narrative = options.get(
+            "run_narrative",
+            True,
+        )
+
+        run_tts = options.get(
+            "run_tts",
+            True,
+        )
+
+        # ====================================================
+        # Validação dos modelos
+        # ====================================================
+
+        settings.validate_model_files(
+            run_spectra=(
+                run_spectra
+            ),
+            run_narrative=(
+                run_narrative
+            ),
+        )
+
+        print(
+            "[API] Modelos configurados:"
+        )
+
+        if run_spectra:
+            print(
+                "[API] Scene:",
+                settings.scene_model_path,
+            )
+
+            print(
+                "[API] Person:",
+                settings.person_model_path,
+            )
+
+            print(
+                "[API] Object:",
+                settings.object_model_path,
+            )
+
+            print(
+                "[API] Atmosphere:",
+                settings.atmosphere_model_path,
+            )
+
+            print(
+                "[API] Actions:",
+                settings.action_model_path,
+            )
+
+        if (
+            run_spectra
+            and run_narrative
+        ):
+            print(
+                "[API] Narrative:",
+                settings.narrative_model_path,
+            )
+
+        # ====================================================
+        # Pipeline
+        # ====================================================
+
         result = process_video(
-            video_path=video_path,
+            video_path=(
+                video_path
+            ),
+
             output_base_dir=str(
                 output_dir
             ),
-            frame_interval_seconds=options.get(
-                "frame_interval_seconds",
-                1.0,
+
+            # -----------------------------------------------
+            # Frames
+            # -----------------------------------------------
+
+            frame_interval_seconds=(
+                options.get(
+                    "frame_interval_seconds",
+                    1.0,
+                )
             ),
-            whisper_language=options.get(
-                "whisper_language"
+
+            # -----------------------------------------------
+            # Whisper
+            # -----------------------------------------------
+
+            whisper_language=(
+                options.get(
+                    "whisper_language"
+                )
             ),
-            run_spectra=options.get(
-                "run_spectra",
-                True,
+
+            # -----------------------------------------------
+            # Modelos Spectra
+            # -----------------------------------------------
+
+            scene_model_path=str(
+                settings.scene_model_path
             ),
-            run_narrative=options.get(
-                "run_narrative",
-                True,
+
+            person_model_path=str(
+                settings.person_model_path
             ),
-            run_tts=options.get(
-                "run_tts",
-                True,
+
+            object_model_path=str(
+                settings.object_model_path
+            ),
+
+            atmosphere_model_path=str(
+                settings.atmosphere_model_path
+            ),
+
+            action_model_path=str(
+                settings.action_model_path
+            ),
+
+            # -----------------------------------------------
+            # Thresholds Spectra
+            # -----------------------------------------------
+
+            spectra_scene_threshold=(
+                0.45
+            ),
+
+            spectra_person_threshold=(
+                0.50
+            ),
+
+            spectra_object_threshold=(
+                0.35
+            ),
+
+            spectra_atmosphere_threshold=(
+                0.50
+            ),
+
+            spectra_action_threshold=(
+                0.60
+            ),
+
+            spectra_top_k=10,
+
+            # -----------------------------------------------
+            # Person
+            # -----------------------------------------------
+
+            use_person_model_on_full_frame=(
+                False
+            ),
+
+            use_person_cropper=True,
+
+            person_cropper_model_name=(
+                "yolov8n.pt"
+            ),
+
+            person_cropper_confidence_threshold=(
+                0.35
+            ),
+
+            person_max_people=3,
+
+            # -----------------------------------------------
+            # Object
+            # -----------------------------------------------
+
+            use_object_model_on_full_frame=(
+                False
+            ),
+
+            use_object_cropper=True,
+
+            object_cropper_model_name=(
+                "yolov8n.pt"
+            ),
+
+            object_cropper_confidence_threshold=(
+                0.25
+            ),
+
+            object_max_objects=20,
+
+            # -----------------------------------------------
+            # Actions
+            # -----------------------------------------------
+
+            use_action_model=True,
+
+            use_action_person_cropper=True,
+
+            action_max_people=5,
+
+            # -----------------------------------------------
+            # Narrative
+            # -----------------------------------------------
+
+            narrative_model_path=str(
+                settings.narrative_model_path
+            ),
+
+            # -----------------------------------------------
+            # Segurança
+            # -----------------------------------------------
+
+            strict_model_loading=True,
+
+            # -----------------------------------------------
+            # Controle
+            # -----------------------------------------------
+
+            run_spectra=(
+                run_spectra
+            ),
+
+            run_narrative=(
+                run_narrative
+            ),
+
+            run_tts=(
+                run_tts
             ),
         )
+
+        # ====================================================
+        # Salvar resultado
+        # ====================================================
 
         result_path = (
             output_dir
@@ -79,6 +300,10 @@ def run_generation_job(
                 default=str,
             )
 
+        # ====================================================
+        # Job concluído
+        # ====================================================
+
         update_job(
             job_id,
             status="completed",
@@ -89,11 +314,19 @@ def run_generation_job(
         )
 
     except Exception as error:
+        print(
+            "[API] Geração falhou:",
+            repr(error),
+        )
+
         update_job(
             job_id,
             status="failed",
             finished_at=utc_now(),
-            error=str(error),
+            error=(
+                f"{type(error).__name__}: "
+                f"{error}"
+            ),
         )
 
 
@@ -101,15 +334,20 @@ def load_generation_result(
     job_id: str,
     result_path: str,
 ) -> Dict[str, Any]:
-    path = Path(result_path)
+    path = Path(
+        result_path
+    )
 
     if not path.exists():
         raise FileNotFoundError(
-            "Arquivo de resultado não encontrado."
+            "Arquivo de resultado "
+            "não encontrado."
         )
 
     with path.open(
         "r",
         encoding="utf-8",
     ) as file:
-        return json.load(file)
+        return json.load(
+            file
+        )
