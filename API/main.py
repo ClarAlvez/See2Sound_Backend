@@ -1,3 +1,9 @@
+import logging
+from contextlib import asynccontextmanager
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
+from API.core.errors import StoredDataError
+from API.services.runtime import RuntimeLease, recover_interrupted_jobs
 from fastapi import FastAPI
 from fastapi.middleware.cors import (
     CORSMiddleware,
@@ -12,7 +18,17 @@ from API.routes.health import (
 )
 
 
+@asynccontextmanager
+async def lifespan(app):
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    settings.create_runtime_directories()
+    with RuntimeLease():
+        await run_in_threadpool(recover_interrupted_jobs)
+        yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="See2Sound API",
     description=(
         "API do backend do See2Sound para "
@@ -60,3 +76,8 @@ def root():
             "/api/v1/generations"
         ),
     }
+
+@app.exception_handler(StoredDataError)
+async def stored_data_error_handler(request, error):
+    logging.getLogger(__name__).error("Stored generation data unavailable", exc_info=error)
+    return JSONResponse(status_code=500, content={"detail": str(error)})

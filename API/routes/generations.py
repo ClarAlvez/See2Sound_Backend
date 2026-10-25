@@ -1,3 +1,5 @@
+import math
+import logging
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -11,6 +13,14 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse
+
+from starlette.concurrency import run_in_threadpool
+from API.services.runtime import (
+    reserve_generation_slot, release_generation_slot, run_admitted_generation,
+)
+from API.utils.video_validation import (
+    InvalidVideoError, VideoValidationUnavailable, validate_uploaded_video,
+)
 
 from API.core.config import settings
 from API.schemas.generation import (
@@ -32,6 +42,8 @@ from API.utils.files import (
     save_upload_file,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/generations",
@@ -58,97 +70,57 @@ async def create_generation(
     run_narrative: bool = Form(True),
     run_tts: bool = Form(True),
 ):
-    original_filename = (
-        video.filename
-        or "video"
-    )
-
-    extension = Path(
-        original_filename
-    ).suffix.lower()
-
-    if (
-        extension
-        not in settings.allowed_video_extensions
-    ):
-        raise HTTPException(
-            status_code=415,
-            detail=(
-                "Formato de vídeo não suportado. "
-                "Formatos aceitos: "
-                + ", ".join(
-                    sorted(
-                        settings.allowed_video_extensions
-                    )
-                )
-            ),
-        )
-
-    if frame_interval_seconds <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "frame_interval_seconds "
-                "deve ser maior que zero."
-            ),
-        )
-
+    original_filename = video.filename or "video"
+    extension = Path(original_filename).suffix.lower()
     job_id = uuid4().hex
-
-    video_path = (
-        settings.upload_dir
-        / f"{job_id}{extension}"
-    )
-
+    video_path = settings.upload_dir / f"{job_id}{extension}"
+    accepted = False
+    reserved = False
+    saved = False
     try:
-        upload_size = await save_upload_file(
-            upload=video,
-            destination=video_path,
-            max_size_bytes=(
-                settings.max_upload_size_bytes
-            ),
-        )
-
+        if extension not in settings.allowed_video_extensions:
+            raise HTTPException(415, "Formato de vídeo não suportado. Formatos aceitos: " +
+                                ", ".join(sorted(settings.allowed_video_extensions)))
+        if not math.isfinite(frame_interval_seconds) or frame_interval_seconds <= 0:
+            raise HTTPException(400, "frame_interval_seconds deve ser finito e maior que zero.")
+        options_dict = GenerationOptions(
+            frame_interval_seconds=frame_interval_seconds,
+            whisper_language=whisper_language, run_spectra=run_spectra,
+            run_narrative=run_narrative, run_tts=run_tts,
+        ).model_dump()
+        if not reserve_generation_slot():
+            raise HTTPException(503, "Fila de processamento cheia. Tente novamente em instantes.",
+                                headers={"Retry-After": "10"})
+        reserved = True
+        upload_size = await save_upload_file(video, video_path, settings.max_upload_size_bytes)
+        saved = True
+        metadata = await run_in_threadpool(validate_uploaded_video, video_path)
+        logger.info("job=%s stage=upload_validated bytes=%s duration_seconds=%.3f",
+                    job_id, upload_size, metadata["duration_seconds"])
+        await run_in_threadpool(create_job, job_id=job_id, original_filename=original_filename,
+                                input_path=str(video_path), upload_size=upload_size, options=options_dict)
+        background_tasks.add_task(run_admitted_generation, job_id, str(video_path), options_dict, run_generation_job)
+        accepted = True
     except UploadTooLargeError as error:
-        raise HTTPException(
-            status_code=413,
-            detail=str(error),
-        )
-
-    options = GenerationOptions(
-        frame_interval_seconds=(
-            frame_interval_seconds
-        ),
-        whisper_language=(
-            whisper_language
-        ),
-        run_spectra=run_spectra,
-        run_narrative=run_narrative,
-        run_tts=run_tts,
-    )
-
-    options_dict = (
-        options.model_dump()
-    )
-
-    create_job(
-        job_id=job_id,
-        original_filename=(
-            original_filename
-        ),
-        input_path=str(
-            video_path
-        ),
-        upload_size=upload_size,
-        options=options_dict,
-    )
-
-    background_tasks.add_task(
-        run_generation_job,
-        job_id,
-        str(video_path),
-        options_dict,
-    )
+        logger.warning("job=%s stage=upload rejected reason=size", job_id)
+        raise HTTPException(413, str(error)) from error
+    except InvalidVideoError as error:
+        logger.warning("job=%s stage=video_validation rejected", job_id)
+        raise HTTPException(400, str(error)) from error
+    except VideoValidationUnavailable as error:
+        raise HTTPException(503, str(error)) from error
+    except OSError as error:
+        logger.exception("job=%s stage=upload storage_failed", job_id)
+        raise HTTPException(503, "Armazenamento indisponível. Verifique o espaço e as permissões do servidor.") from error
+    finally:
+        await video.close()
+        if reserved and not accepted:
+            release_generation_slot()
+        if saved and not accepted:
+            try:
+                await run_in_threadpool(video_path.unlink, missing_ok=True)
+            except OSError:
+                logger.exception("job=%s stage=upload cleanup_failed", job_id)
 
     return GenerationCreatedResponse(
         job_id=job_id,
@@ -223,9 +195,9 @@ def get_generation_status(
         finished_at=job.get(
             "finished_at"
         ),
-        error=job.get(
-            "error"
-        ),
+        error=job.get("error"),
+        stage=job.get("stage"),
+        stage_durations_seconds=job.get("stage_durations_seconds", {}),
         options=job.get(
             "options",
             {},
@@ -427,7 +399,7 @@ def download_artifact(
             ),
         )
 
-    if not artifact_path.exists():
+    if not artifact_path.is_file() or artifact_path.stat().st_size == 0:
         raise HTTPException(
             status_code=404,
             detail=(
@@ -559,7 +531,7 @@ def get_audio_description(
             ),
         )
 
-    if not audio_path.exists():
+    if not audio_path.is_file() or audio_path.stat().st_size == 0:
         raise HTTPException(
             status_code=404,
             detail=(

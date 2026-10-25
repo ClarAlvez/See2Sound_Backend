@@ -1,10 +1,9 @@
+
 import json
 from pathlib import Path
 from typing import Any, Dict
 
-from API.core.config import (
-    settings,
-)
+from API.core.config import settings
 
 from API.services.job_store import (
     update_job,
@@ -17,10 +16,6 @@ def run_generation_job(
     video_path: str,
     options: Dict[str, Any],
 ):
-    # ========================================================
-    # Estado inicial
-    # ========================================================
-
     update_job(
         job_id,
         status="processing",
@@ -39,13 +34,9 @@ def run_generation_job(
     )
 
     try:
-        from pipeline.orchestration.process_video import (
-            process_video,
+        from pipeline.orchestration.verified_pipeline import (
+            process_video_verified,
         )
-
-        # ====================================================
-        # Opções
-        # ====================================================
 
         run_spectra = options.get(
             "run_spectra",
@@ -62,75 +53,32 @@ def run_generation_job(
             True,
         )
 
-        # ====================================================
-        # Validação dos modelos
-        # ====================================================
-
         settings.validate_model_files(
-            run_spectra=(
-                run_spectra
-            ),
-            run_narrative=(
-                run_narrative
-            ),
+            run_spectra=run_spectra,
+            run_narrative=run_narrative,
         )
 
         print(
-            "[API] Modelos configurados:"
+            "[API] Iniciando processamento."
         )
 
         if run_spectra:
             print(
-                "[API] Scene:",
-                settings.scene_model_path,
-            )
-
-            print(
-                "[API] Person:",
-                settings.person_model_path,
-            )
-
-            print(
-                "[API] Object:",
-                settings.object_model_path,
-            )
-
-            print(
-                "[API] Atmosphere:",
-                settings.atmosphere_model_path,
-            )
-
-            print(
-                "[API] Actions:",
+                "[API] Spectra Actions:",
                 settings.action_model_path,
             )
 
-        if (
-            run_spectra
-            and run_narrative
-        ):
             print(
-                "[API] Narrative:",
-                settings.narrative_model_path,
+                "[API] X-CLIP 16 Frames: ativado"
             )
 
-        # ====================================================
-        # Pipeline
-        # ====================================================
-
-        result = process_video(
-            video_path=(
-                video_path
-            ),
-
+        result = process_video_verified(
+            video_path=video_path,
             output_base_dir=str(
                 output_dir
             ),
 
-            # -----------------------------------------------
             # Frames
-            # -----------------------------------------------
-
             frame_interval_seconds=(
                 options.get(
                     "frame_interval_seconds",
@@ -138,150 +86,77 @@ def run_generation_job(
                 )
             ),
 
-            # -----------------------------------------------
             # Whisper
-            # -----------------------------------------------
-
             whisper_language=(
                 options.get(
                     "whisper_language"
                 )
             ),
 
-            # -----------------------------------------------
             # Modelos Spectra
-            # -----------------------------------------------
-
             scene_model_path=str(
                 settings.scene_model_path
             ),
-
             person_model_path=str(
                 settings.person_model_path
             ),
-
             object_model_path=str(
                 settings.object_model_path
             ),
-
             atmosphere_model_path=str(
                 settings.atmosphere_model_path
             ),
-
             action_model_path=str(
                 settings.action_model_path
             ),
 
-            # -----------------------------------------------
-            # Thresholds Spectra
-            # -----------------------------------------------
-
-            spectra_scene_threshold=(
-                0.45
-            ),
-
-            spectra_person_threshold=(
-                0.50
-            ),
-
-            spectra_object_threshold=(
-                0.35
-            ),
-
-            spectra_atmosphere_threshold=(
-                0.50
-            ),
-
-            spectra_action_threshold=(
-                0.60
-            ),
-
+            # Thresholds
+            spectra_scene_threshold=0.45,
+            spectra_person_threshold=0.50,
+            spectra_object_threshold=0.35,
+            spectra_atmosphere_threshold=0.50,
+            spectra_action_threshold=0.60,
             spectra_top_k=10,
 
-            # -----------------------------------------------
             # Person
-            # -----------------------------------------------
-
-            use_person_model_on_full_frame=(
-                False
-            ),
-
+            use_person_model_on_full_frame=False,
             use_person_cropper=True,
-
-            person_cropper_model_name=(
-                "yolov8n.pt"
-            ),
-
-            person_cropper_confidence_threshold=(
-                0.35
-            ),
-
+            person_cropper_model_name="yolov8n.pt",
+            person_cropper_confidence_threshold=0.35,
             person_max_people=3,
 
-            # -----------------------------------------------
             # Object
-            # -----------------------------------------------
-
-            use_object_model_on_full_frame=(
-                False
-            ),
-
+            use_object_model_on_full_frame=False,
             use_object_cropper=True,
-
-            object_cropper_model_name=(
-                "yolov8n.pt"
-            ),
-
-            object_cropper_confidence_threshold=(
-                0.25
-            ),
-
+            object_cropper_model_name="yolov8n.pt",
+            object_cropper_confidence_threshold=0.25,
             object_max_objects=20,
 
-            # -----------------------------------------------
             # Actions
-            # -----------------------------------------------
-
             use_action_model=True,
-
             use_action_person_cropper=True,
-
             action_max_people=5,
 
-            # -----------------------------------------------
-            # Narrative
-            # -----------------------------------------------
+            # X-CLIP
+            run_xclip=run_spectra,
 
+            # Narrative
             narrative_model_path=str(
                 settings.narrative_model_path
             ),
 
-            # -----------------------------------------------
-            # Segurança
-            # -----------------------------------------------
+            # Configurações da mixagem
+            voice_background_volume=0.18,
+            voice_description_volume=1.0,
 
+            # Validação
             strict_model_loading=True,
 
-            # -----------------------------------------------
             # Controle
-            # -----------------------------------------------
-
-            run_spectra=(
-                run_spectra
-            ),
-
-            run_narrative=(
-                run_narrative
-            ),
-
-            run_tts=(
-                run_tts
-            ),
+            run_spectra=run_spectra,
+            run_narrative=run_narrative,
+            run_tts=run_tts,
         )
-
-        # ====================================================
-        # Salvar resultado
-        # ====================================================
 
         result_path = (
             output_dir
@@ -299,10 +174,6 @@ def run_generation_job(
                 ensure_ascii=False,
                 default=str,
             )
-
-        # ====================================================
-        # Job concluído
-        # ====================================================
 
         update_job(
             job_id,

@@ -1564,6 +1564,7 @@ def process_video(
     run_spectra: bool = True,
     run_narrative: bool = True,
     run_tts: bool = True,
+    progress_callback=None,
 ) -> Dict[str, Any]:
     """
     Pipeline principal do See2Sound.
@@ -1586,6 +1587,10 @@ def process_video(
     `run_tts` é mantido por compatibilidade com a API existente e
     controla a execução da Voice Engine.
     """
+    def progress(stage):
+        if progress_callback is not None:
+            progress_callback(stage)
+
     validated_video_path = validate_video_path(
         video_path
     )
@@ -1600,10 +1605,12 @@ def process_video(
         validated_output_base_dir
     )
 
+    progress("metadata")
     metadata_result = process_metadata(
         str(validated_video_path)
     )
 
+    progress("audio_extraction")
     audio_result = process_audio(
         video_path=str(
             validated_video_path
@@ -1613,6 +1620,7 @@ def process_video(
         ],
     )
 
+    progress("speech_analysis")
     whisper_result = analyze_extracted_audio(
         audio_result=audio_result,
         whisper_model_size=whisper_model_size,
@@ -1633,6 +1641,7 @@ def process_video(
         ),
     )
 
+    progress("frames")
     frames_result = process_frames(
         video_path=str(
             validated_video_path
@@ -1645,6 +1654,7 @@ def process_video(
         ),
     )
 
+    progress("scenes")
     scenes_result = process_scenes(
         video_path=str(
             validated_video_path
@@ -1766,6 +1776,7 @@ def process_video(
             )
         )
 
+    progress("spectra")
     if run_spectra:
         direct_object_model_path = (
             None
@@ -1889,6 +1900,7 @@ def process_video(
         Dict[str, Any]
     ] = []
 
+    progress("narrative")
     if run_narrative:
         if not spectra_outputs:
             print(
@@ -1911,6 +1923,7 @@ def process_video(
         Dict[str, Any]
     ] = None
 
+    progress("voice_engine")
     if run_tts:
         if not narrative_timeline:
             print(
@@ -1956,6 +1969,7 @@ def process_video(
                 )
             )
 
+    progress("saving_artifacts")
     spectra_json_path = save_json(
         data=spectra_outputs,
         output_path=(

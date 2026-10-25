@@ -72,3 +72,5 @@ data/training_reports/
 Thumbs.db
 .vscode/
 .idea/
+
+scripts/

@@ -8,15 +8,15 @@ from ai.spectra.Person.labels import LABELS
 from ai.spectra.Person.model import SpectraPersonNet
 from ai.spectra.data.transforms import get_test_transforms
 
+# Legacy checkpoints may still contain age outputs. Keep their index mapping
+# intact, but never expose these labels in Person predictions.
+EXCLUDED_AGE_LABELS = frozenset({"child", "adult", "elderly"})
+
 LABEL_MIN_THRESHOLDS = {
     "person": 0.50,
 
     "man": 0.70,
     "woman": 0.70,
-
-    "child": 0.60,
-    "adult": 0.45,
-    "elderly": 0.60,
 
     "short_hair": 0.50,
     "long_hair": 0.60,
@@ -167,6 +167,9 @@ class PersonPredictor:
         all_predictions = []
 
         for label, probability in zip(self.labels, probabilities):
+            if label in EXCLUDED_AGE_LABELS:
+                continue
+
             all_predictions.append(
                 {
                     "label": label,
@@ -206,6 +209,9 @@ class PersonPredictor:
         predictions = []
 
         for label, probability in zip(self.labels, probabilities):
+            if label in EXCLUDED_AGE_LABELS:
+                continue
+
             score = float(probability)
 
             label_threshold = LABEL_MIN_THRESHOLDS.get(label, threshold)
@@ -251,7 +257,6 @@ class PersonPredictor:
 
         exclusive_groups = [
             ["man", "woman"],
-            ["child", "adult", "elderly"],
             ["short_hair", "long_hair", "bald_hair"],
             ["black_hair", "blonde_hair", "brown_hair", "gray_hair"],
             ["straight_hair", "wavy_hair"],

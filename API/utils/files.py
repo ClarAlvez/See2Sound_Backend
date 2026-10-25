@@ -1,54 +1,32 @@
 from pathlib import Path
-
 from fastapi import UploadFile
-
+from starlette.concurrency import run_in_threadpool
 
 CHUNK_SIZE = 1024 * 1024
-
 
 class UploadTooLargeError(Exception):
     pass
 
-
-async def save_upload_file(
-    upload: UploadFile,
-    destination: Path,
-    max_size_bytes: int,
-) -> int:
-    destination.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    total_size = 0
-
+async def save_upload_file(upload: UploadFile, destination: Path, max_size_bytes: int) -> int:
+    """Copy the spooled upload off the event loop; discard partial copies."""
+    def copy_upload():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        total_size = 0
+        created = False
+        try:
+            with destination.open('xb') as output_file:
+                created = True
+                while chunk := upload.file.read(CHUNK_SIZE):
+                    total_size += len(chunk)
+                    if total_size > max_size_bytes:
+                        raise UploadTooLargeError('O arquivo enviado excede o tamanho máximo permitido.')
+                    output_file.write(chunk)
+        except BaseException:
+            if created:
+                destination.unlink(missing_ok=True)
+            raise
+        return total_size
     try:
-        with destination.open("wb") as output_file:
-            while True:
-                chunk = await upload.read(
-                    CHUNK_SIZE
-                )
-
-                if not chunk:
-                    break
-
-                total_size += len(chunk)
-
-                if total_size > max_size_bytes:
-                    raise UploadTooLargeError(
-                        "O arquivo enviado excede "
-                        "o tamanho máximo permitido."
-                    )
-
-                output_file.write(chunk)
-
-    except Exception:
-        if destination.exists():
-            destination.unlink()
-
-        raise
-
+        return await run_in_threadpool(copy_upload)
     finally:
         await upload.close()
-
-    return total_size

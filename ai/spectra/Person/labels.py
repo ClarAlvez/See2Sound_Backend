@@ -4,12 +4,6 @@ BODY_LABELS = [
     "woman",
 ]
 
-AGE_LABELS = [
-    "child",
-    "adult",
-    "elderly",
-]
-
 HAIR_LABELS = [
     "short_hair",
     "long_hair",
@@ -55,7 +49,6 @@ ACCESSORY_LABELS = [
 
 SPECTRA_PERSON_LABELS = (
     BODY_LABELS
-    + AGE_LABELS
     + HAIR_LABELS
     + CLOTHING_COLOR_LABELS
     + CLOTHING_TYPE_LABELS

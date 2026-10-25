@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 from typing import Dict
 
@@ -134,6 +135,15 @@ class Settings:
                 "500",
             )
         )
+
+        self.max_pending_generations = max(1, int(os.getenv("SEE2SOUND_MAX_PENDING_GENERATIONS", "4")))
+        self.video_validation_timeout_seconds = float(os.getenv("SEE2SOUND_VIDEO_VALIDATION_TIMEOUT", "30"))
+        self.max_video_duration_seconds = float(os.getenv("SEE2SOUND_MAX_VIDEO_DURATION_SECONDS", "0"))
+
+        if not math.isfinite(self.video_validation_timeout_seconds) or self.video_validation_timeout_seconds <= 0:
+            raise ValueError("SEE2SOUND_VIDEO_VALIDATION_TIMEOUT deve ser finito e positivo.")
+        if not math.isfinite(self.max_video_duration_seconds) or self.max_video_duration_seconds < 0:
+            raise ValueError("SEE2SOUND_MAX_VIDEO_DURATION_SECONDS deve ser finito e não negativo.")
 
         self.allowed_video_extensions = {
             ".mp4",

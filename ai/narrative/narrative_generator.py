@@ -862,7 +862,31 @@ class LLMNarrativeGenerator:
                         label
                     )
 
-            if candidates:
+            
+        if candidates:
+            context = (
+                narrative_input.context
+                or {}
+            )
+
+            preferred_action = context.get(
+                "preferred_action"
+            )
+
+            # Só aceita a preferência quando
+            # a ação existe entre as candidatas
+            # já validadas pela Narrative.
+            if preferred_action in candidates:
+                action = preferred_action
+
+                print(
+                    "[Narrative] Ação priorizada "
+                    "pela fusão:",
+                    action,
+                )
+
+            else:
+                # Comportamento original da Spectra.
                 action = max(
                     candidates,
                     key=lambda label: (
@@ -873,6 +897,7 @@ class LLMNarrativeGenerator:
                         or 0.0
                     ),
                 )
+
 
         # -----------------------------------------------
         # Aparência
@@ -2145,10 +2170,6 @@ class LLMNarrativeGenerator:
                 self.use_llm,
             )
 
-            print(
-                "  Descrição:",
-                description,
-            )
 
         return outputs
 
@@ -2262,15 +2283,7 @@ class LLMNarrativeGenerator:
                 f"Cena {index + 1}"
             )
 
-            print(
-                "  fatos selecionados:",
-                output.scene_context,
-            )
 
-            print(
-                "  descrição:",
-                output.description,
-            )
 
             print(
                 "  skipped:",

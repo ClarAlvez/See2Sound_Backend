@@ -164,8 +164,7 @@ class VoiceEngine:
 
                 print(
                     "[Voice Engine] "
-                    f"Gerando cue #{index}: "
-                    f"{text}"
+                    f"Gerando cue #{index}"
                 )
 
                 generated_path = (

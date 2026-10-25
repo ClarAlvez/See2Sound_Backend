@@ -57,17 +57,17 @@ Processed Media Returned
 ```bash
 see2sound-backend/
 │
-├── app/                # API application
-│   ├── api/            # API routes
-│   ├── core/           # configurations and settings
-│   ├── services/       # business logic
-│   ├── models/         # data models
-│   └── utils/          # helper utilities
+├── API/                # FastAPI application
+│   ├── routes/         # health, upload, jobs and downloads
+│   ├── core/           # configuration
+│   ├── services/       # local JSON jobs and processing
+│   ├── schemas/        # public request/response models
+│   └── utils/          # upload and video validation
 │
 ├── ai/                 # AI modules
 │   ├── spectra/        # visual recognition
 │   ├── narrative/      # description generation
-│   └── voice/          # text-to-speech
+│   └── voice_engine/   # TTS scheduling and mixed WAV output
 │
 ├── pipeline/           # video processing pipeline
 │   ├── video/          # video metadata, frames and scene detection
@@ -180,3 +180,19 @@ Developed as part of the **See2Sound Project**.
 
 - 💫​ Clara Alves dos Santos — [GitHub](https://github.com/ClarAlvez)
 - 🐶​​ João Victor Cussolim   — [GitHub](https://github.com/JoaoCussolim)
+
+## Local API and presentation checks
+
+Run from the repository root, with the project's working Python environment:
+
+```powershell
+python -m uvicorn API.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Use `--reload` only during development; restarting interrupts active generations.
+The API returns a full mixed WAV for synchronized playback with the original video.
+The Flutter player should mute the video's original audio while playing this WAV.
+
+See [the pre-presentation audit](AUDITORIA_PRE_APRESENTACAO_BACKEND.md) for the
+verified scope, current environment limitations, API contracts, tests and rollback.
+AI recommendations are in [the separate technical review](docs/AUDITORIA_IA_RECOMENDACOES.md).

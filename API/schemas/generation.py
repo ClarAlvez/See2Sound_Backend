@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GenerationOptions(BaseModel):
@@ -34,6 +34,8 @@ class GenerationStatusResponse(BaseModel):
     error: Optional[str] = None
 
     options: Dict[str, Any]
+    stage: Optional[str] = None
+    stage_durations_seconds: Dict[str, float] = Field(default_factory=dict)
 
 
 class GenerationResultResponse(BaseModel):
