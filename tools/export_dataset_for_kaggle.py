@@ -4,10 +4,10 @@ import shutil
 import pandas as pd
 
 
-INPUT_CSV = Path("data/datasets/spectra_atmosphere_v2_final_debug.csv")
-OUTPUT_DIR = Path("data/kaggle/spectra_atmosphere_v2")
+INPUT_CSV = Path("data/datasets/spectra_atmosphere_v3_masked.csv")
+OUTPUT_DIR = Path("data/kaggle/spectra_atmosphere_v3_masked")
 OUTPUT_IMAGES_DIR = OUTPUT_DIR / "images"
-OUTPUT_CSV = OUTPUT_DIR / "spectra_atmosphere_v2_final_debug.csv"
+OUTPUT_CSV = OUTPUT_DIR / "spectra_atmosphere_v3_masked.csv"
 
 
 def main():

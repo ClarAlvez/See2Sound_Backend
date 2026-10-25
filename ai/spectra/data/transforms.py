@@ -60,21 +60,15 @@ def get_train_transforms(
     ])
 
 
-def get_atmosphere_train_transforms(
-    image_size=224,
-):
+def get_atmosphere_train_transforms(image_size=224):
     """
-    Transformações específicas para o AtmosphereNet.
+    Augmentation fotométrico conservador para AtmosphereNet.
 
-    Evita mudanças artificiais de:
-    - brilho
-    - contraste
-    - saturação
-    - tonalidade
-
-    porque essas propriedades são informações
-    importantes para reconhecer atmosfera,
-    iluminação e condições climáticas.
+    Objetivos:
+    - Simular pequenas diferenças de exposição e câmera.
+    - Preservar sombras, fontes de luz e contraste global.
+    - Evitar transformar artificialmente dia em noite.
+    - Preservar padrões de neblina, chuva e neve.
     """
 
     return transforms.Compose([
@@ -82,25 +76,28 @@ def get_atmosphere_train_transforms(
             (image_size, image_size)
         ),
 
-        transforms.RandomHorizontalFlip(
-            p=0.5
-        ),
+        # Não modifica luminosidade ou relações de cores.
+        transforms.RandomHorizontalFlip(p=0.5),
 
-        transforms.RandomRotation(
-            degrees=3
-        ),
-
-        transforms.RandomAffine(
-            degrees=0,
-            translate=(0.02, 0.02),
-            scale=(0.98, 1.02),
+        # Variações fotométricas leves.
+        # Aplicadas somente em 45% das amostras.
+        transforms.RandomApply(
+            [
+                transforms.ColorJitter(
+                    brightness=0.08,
+                    contrast=0.06,
+                    saturation=0.08,
+                    hue=0.008,
+                )
+            ],
+            p=0.45,
         ),
 
         transforms.ToTensor(),
 
         transforms.Normalize(
-            mean=IMAGENET_MEAN,
-            std=IMAGENET_STD,
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
         ),
     ])
 
