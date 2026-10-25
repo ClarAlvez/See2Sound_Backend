@@ -846,6 +846,8 @@ class LLMNarrativeGenerator:
 
         action = None
 
+        candidates = []
+
         if subject is not None:
             candidates = []
 

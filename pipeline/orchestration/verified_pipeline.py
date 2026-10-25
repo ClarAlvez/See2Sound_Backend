@@ -1,3 +1,8 @@
+from ai.spectra.Object.object_intermediate import (ObjectCLIPVerifier, apply_object_intermediate, scene_for_narrative)
+from ai.narrative.person_fusion_narrative import PersonFusionNarrativeGenerator
+from ai.spectra.Person.person_intermediate import (
+    PersonCLIPVerifier, apply_person_intermediate
+)
 
 import os
 from pathlib import Path
@@ -264,6 +269,40 @@ def process_video_verified(
     spectra_outputs = verified["scenes"]
     summary = verified["summary"]
 
+    # Person Intermediate V1: antes de salvar a Spectra e narrar.
+    person_enabled = os.getenv("SEE2SOUND_PERSON_INTERMEDIATE", "false").lower() in ("1", "true", "yes", "on")
+    if person_enabled:
+        clip_verifier = PersonCLIPVerifier()
+        detection_cap = int(pipeline_options.get("person_max_people", 3))
+        spectra_outputs = [
+            apply_person_intermediate(scene, verifier=clip_verifier, detection_cap=detection_cap)
+            for scene in spectra_outputs
+        ]
+        for index, updated_scene in enumerate(spectra_outputs, 1):
+            info = updated_scene.get("person_intermediate", {})
+            print("[PERSON INTERMEDIATE]", index, info.get("count_type"), info.get("frame_counts"))
+
+
+    # Object Intermediate V2: verificação independente antes da Narrative.
+    object_enabled = os.getenv("SEE2SOUND_OBJECT_INTERMEDIATE", "false").lower() in ("true", "1", "yes", "on")
+    if object_enabled:
+        object_apply = os.getenv("SEE2SOUND_OBJECT_APPLY_REMOVALS", "false").lower() in ("true", "1", "yes", "on")
+        object_add = os.getenv("SEE2SOUND_OBJECT_APPLY_ADDITIONS", "false").lower() in ("true", "1", "yes", "on")
+        object_hide = os.getenv("SEE2SOUND_OBJECT_SUPPRESS_NARRATIVE", "true").lower() in ("true", "1", "yes", "on")
+        verifier_obj = ObjectCLIPVerifier()
+        spectra_outputs = [
+            apply_object_intermediate(scene, verifier=verifier_obj,
+                                      apply_removals=object_apply,
+                                      apply_additions=object_add,
+                                      suppress_narrative=object_hide)
+            for scene in spectra_outputs
+        ]
+        for i, scene in enumerate(spectra_outputs, 1):
+            info = scene.get("object_intermediate", {})
+            print("[OBJECT V2]", i, "add=", info.get("proposed_additions"),
+                  "remove=", info.get("proposed_removals"),
+                  "hide=", info.get("narrative_suppression"))
+
     spectra["outputs"] = (
         spectra_outputs
     )
@@ -358,16 +397,18 @@ def process_video_verified(
         )
 
         generator = (
-            FusionNarrativeGenerator(
+            PersonFusionNarrativeGenerator(
                 model_path=model_path
             )
         )
 
+        # Objetos duvidosos são ocultados somente da cópia narrativa.
+        narrative_scenes = [scene_for_narrative(s) for s in spectra_outputs]
         narrative_timeline = (
             generator
             .generate_timeline_from_dicts(
                 spectra_outputs=(
-                    spectra_outputs
+                    narrative_scenes
                 )
             )
         )
