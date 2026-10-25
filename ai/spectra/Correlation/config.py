@@ -145,3 +145,57 @@ class CorrelationConfig:
             "bag",
         ]
     )
+
+    # ============================================================
+    # Object tracking
+    # ============================================================
+
+    object_track_max_seconds: float = 2.0
+
+    object_track_min_score: float = 0.35
+    object_track_min_spatial_score: float = 0.20
+
+    object_track_iou_weight: float = 0.55
+    object_track_center_weight: float = 0.45
+
+    # ============================================================
+    # Person ↔ Object
+    # ============================================================
+
+    object_association_min_score: float = 0.45
+    object_association_min_margin: float = 0.05
+
+    object_relation_min_observations: int = 2
+
+    object_wearable_labels: List[str] = field(
+        default_factory=lambda: [
+            "glasses",
+        ]
+    )
+
+    object_carried_labels: List[str] = field(
+        default_factory=lambda: [
+            "bag",
+            "backpack",
+            "handbag",
+            "suitcase",
+            "umbrella",
+        ]
+    )
+
+    object_held_labels: List[str] = field(
+        default_factory=lambda: [
+            "phone",
+            "book",
+            "paper",
+            "letter",
+            "document",
+            "photo",
+            "bottle",
+            "cup",
+            "remote",
+            "key",
+            "knife",
+            "weapon",
+        ]
+    )

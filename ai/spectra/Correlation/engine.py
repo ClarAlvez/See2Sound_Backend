@@ -25,6 +25,27 @@ from ai.spectra.Correlation.reconciler import (
     EntityReconciler,
 )
 
+from ai.spectra.Correlation.object_entities import (
+    ObjectDetection,
+)
+
+from ai.spectra.Correlation.object_memory import (
+    ObjectMemory,
+)
+
+from ai.spectra.Correlation.object_tracker import (
+    ObjectTracker,
+)
+
+from ai.spectra.Correlation.object_association import (
+    ObjectAssociationMemory,
+    PersonObjectAssociator,
+)
+
+from ai.spectra.Correlation.object_adapter import (
+    CorrelationObjectAdapter,
+)
+
 
 class CorrelationEngine:
     def __init__(
@@ -42,17 +63,11 @@ class CorrelationEngine:
             )
         )
 
+        self.object_adapter = (
+            CorrelationObjectAdapter()
+        )
+
         self.reset_state()
-
-        self.memory = EntityMemory(
-            config=self.config
-        )
-
-        self.tracker = PersonTracker(
-            config=self.config
-        )
-
-        self.current_scene_id = None
 
     def process_video(
         self,
@@ -95,6 +110,40 @@ class CorrelationEngine:
             )
         )
 
+        entity_remap = (
+            reconciliation_result.get(
+                "entity_remap",
+                {},
+            )
+        )
+
+        self.object_association_memory.remap_entities(
+            entity_remap
+        )
+
+        for frame in processed_frames:
+            for association in frame.get(
+                "object_associations",
+                [],
+            ):
+                entity_id = association[
+                    "entity_id"
+                ]
+
+                while (
+                    entity_id
+                    in entity_remap
+                ):
+                    entity_id = (
+                        entity_remap[
+                            entity_id
+                        ]
+                    )
+
+                association[
+                    "entity_id"
+                ] = entity_id
+
         final_entity_count = (
             len(
                 self.memory.entities
@@ -102,13 +151,9 @@ class CorrelationEngine:
         )
 
         return {
-            "task_name": (
-                "correlation"
-            ),
+            "task_name": "correlation",
 
-            "version": (
-                "0.2.1"
-            ),
+            "version": "0.3",
 
             "identity_encoder": {
                 "type": (
@@ -132,12 +177,16 @@ class CorrelationEngine:
                 self.tracker.total_tracks_created
             ),
 
-            "entity_count_before_reconciliation": (
-                pre_reconciliation_entity_count
+            "object_track_count": (
+                self.object_tracker.total_tracks_created
             ),
 
-            "entity_count": (
-                final_entity_count
+            "entity_count_before_reconciliation": pre_reconciliation_entity_count,
+
+            "entity_count": final_entity_count,
+
+            "object_count": len(
+                self.object_memory.objects
             ),
 
             "reconciliation": (
@@ -150,6 +199,14 @@ class CorrelationEngine:
 
             "entities": (
                 self.memory.to_dict()
+            ),
+
+            "objects": (
+                self.object_memory.to_dict()
+            ),
+
+            "person_object_relations": (
+                self.object_association_memory.to_dict()
             ),
         }
 
@@ -188,6 +245,7 @@ class CorrelationEngine:
             != self.current_scene_id
         ):
             self.tracker.clear()
+            self.object_tracker.clear()
 
         if scene_id is not None:
             self.current_scene_id = (
@@ -293,9 +351,6 @@ class CorrelationEngine:
             else:
                 tracking_score = None
 
-                # Agora sim perguntamos à memória:
-                # "este NOVO TRACK pertence a alguma
-                # entidade que já conhecemos?"
                 (
                     entity_id,
                     reid_score,
@@ -427,6 +482,182 @@ class CorrelationEngine:
                 }
             )
 
+        raw_objects = frame.get(
+            "objects"
+        )
+
+        if raw_objects is None:
+            raw = frame.get(
+                "raw",
+                {},
+            )
+
+            object_result = raw.get(
+                "object"
+            )
+
+            raw_objects = (
+                self.object_adapter.process_result(
+                    object_result=object_result,
+                    frame_id=frame_id,
+                    timestamp=timestamp,
+                    scene_id=scene_id,
+                )
+            )
+
+        if raw_objects is None:
+            raw_objects = []
+
+        object_detections = (
+            self.build_object_detections(
+                raw_objects=raw_objects,
+
+                frame_id=frame_id,
+
+                timestamp=timestamp,
+
+                scene_id=scene_id,
+            )
+        )
+
+        object_matches = (
+            self.object_tracker.match(
+                detections=object_detections,
+                timestamp=timestamp,
+            )
+        )
+
+        object_results = []
+
+        for (
+            object_index,
+            detection,
+        ) in enumerate(
+            object_detections
+        ):
+
+            if (
+                object_index
+                in object_matches
+            ):
+                match = (
+                    object_matches[
+                        object_index
+                    ]
+                )
+
+                object_id = match[
+                    "object_id"
+                ]
+
+                object_track_id = match[
+                    "track_id"
+                ]
+
+                self.object_memory.update_object(
+                    object_id=object_id,
+                    detection=detection,
+                )
+
+                self.object_tracker.update_track(
+                    track_id=object_track_id,
+                    detection=detection,
+                )
+
+                source = (
+                    "existing_object_track"
+                )
+
+                tracking_score = (
+                    match["score"]
+                )
+
+            else:
+                object_id = (
+                    self.object_memory.create_object(
+                        detection
+                    )
+                )
+
+                object_track_id = (
+                    self.object_tracker.create_track(
+                        object_id=object_id,
+                        detection=detection,
+                    )
+                )
+
+                self.object_memory.register_track(
+                    object_id=object_id,
+                    track_id=object_track_id,
+                )
+
+                source = (
+                    "new_object"
+                )
+
+                tracking_score = None
+
+            object_results.append(
+                {
+                    "detection_id": (
+                        detection.detection_id
+                    ),
+
+                    "object_id": object_id,
+
+                    "track_id": object_track_id,
+
+                    "label": (
+                        detection.label
+                    ),
+
+                    "label_score": round(
+                        detection.label_score,
+                        4,
+                    ),
+
+                    "tracking_source": (
+                        source
+                    ),
+
+                    "tracking_score": (
+                        round(
+                            tracking_score,
+                            4,
+                        )
+                        if tracking_score
+                        is not None
+                        else None
+                    ),
+
+                    "bbox": list(
+                        detection.bbox
+                    ),
+
+                    "crop_path": (
+                        detection.crop_path
+                    ),
+                }
+            )
+
+        object_associations = (
+            self.object_associator.associate(
+                people=results,
+                objects=object_results,
+            )
+        )
+
+        for association in (
+            object_associations
+        ):
+            self.object_association_memory.register(
+                association=association,
+
+                frame_id=frame_id,
+
+                timestamp=timestamp,
+            )
+
         return {
             "frame_id": frame_id,
 
@@ -435,6 +666,10 @@ class CorrelationEngine:
             "scene_id": scene_id,
 
             "people": results,
+
+            "objects": object_results,
+
+            "object_associations": object_associations,
         }
 
     def reset_state(self):
@@ -449,6 +684,26 @@ class CorrelationEngine:
         self.reconciler = EntityReconciler(
             memory=self.memory,
             config=self.config,
+        )
+
+        self.object_memory = ObjectMemory(
+            config=self.config
+        )
+
+        self.object_tracker = ObjectTracker(
+            config=self.config
+        )
+
+        self.object_associator = (
+            PersonObjectAssociator(
+                config=self.config
+            )
+        )
+
+        self.object_association_memory = (
+            ObjectAssociationMemory(
+                config=self.config
+            )
         )
 
         self.current_scene_id = None
@@ -537,6 +792,79 @@ class CorrelationEngine:
 
         return detections
 
+    def build_object_detections(
+        self,
+        raw_objects,
+        frame_id,
+        timestamp,
+        scene_id,
+    ):
+        detections = []
+
+        for index, item in enumerate(
+            raw_objects
+        ):
+            bbox = item.get(
+                "bbox"
+            )
+
+            label = item.get(
+                "label"
+            )
+
+            if (
+                bbox is None
+                or len(bbox) != 4
+                or not label
+            ):
+                continue
+
+            detections.append(
+                ObjectDetection(
+                    detection_id=(
+                        item.get(
+                            "detection_id"
+                        )
+                        or (
+                            f"frame_{frame_id:06d}_"
+                            f"object_{index:02d}"
+                        )
+                    ),
+
+                    frame_id=frame_id,
+
+                    timestamp=timestamp,
+
+                    scene_id=scene_id,
+
+                    label=str(label),
+
+                    label_score=float(
+                        item.get(
+                            "label_score",
+                            0.0,
+                        )
+                    ),
+
+                    bbox=tuple(
+                        float(value)
+                        for value in bbox
+                    ),
+
+                    crop_path=item.get(
+                        "crop_path"
+                    ),
+
+                    detector_confidence=(
+                        item.get(
+                            "detector_confidence"
+                        )
+                    ),
+                )
+            )
+
+        return detections
+
     def generate_missing_embeddings(
         self,
         detections,
@@ -565,6 +893,19 @@ class CorrelationEngine:
                 crop_paths
             )
         )
+
+        if (
+            len(embeddings)
+            != len(
+                pending_detections
+            )
+        ):
+            raise RuntimeError(
+                "IdentityEncoder retornou "
+                "uma quantidade de embeddings "
+                "diferente da quantidade de "
+                "detecções."
+            )
 
         for (
             detection,
@@ -611,6 +952,35 @@ def resolve_crop_paths(
                 continue
 
             person[
+                "crop_path"
+            ] = str(
+                (
+                    base_directory
+                    / path
+                ).resolve()
+            )
+
+        objects = frame.get(
+            "objects",
+            [],
+        )
+
+        for object_data in objects:
+            crop_path = object_data.get(
+                "crop_path"
+            )
+
+            if not crop_path:
+                continue
+
+            path = Path(
+                crop_path
+            )
+
+            if path.is_absolute():
+                continue
+
+            object_data[
                 "crop_path"
             ] = str(
                 (
@@ -695,10 +1065,14 @@ def save_output_json(
 
 
 def build_parser():
+    defaults = (
+        CorrelationConfig()
+    )
+
     parser = argparse.ArgumentParser(
         description=(
             "Executa a Spectra "
-            "Correlation v0.1."
+            "Correlation v0.3."
         )
     )
 
@@ -706,8 +1080,8 @@ def build_parser():
         "--input",
         required=True,
         help=(
-            "JSON contendo os frames "
-            "e detecções de pessoas."
+            "JSON contendo frames, "
+            "pessoas e objetos."
         ),
     )
 
@@ -723,19 +1097,25 @@ def build_parser():
     parser.add_argument(
         "--short-term-threshold",
         type=float,
-        default=0.55,
+        default=(
+            defaults.short_term_min_score
+        ),
     )
 
     parser.add_argument(
         "--reid-threshold",
         type=float,
-        default=0.76,
+        default=(
+            defaults.reidentification_min_score
+        ),
     )
 
     parser.add_argument(
         "--max-track-seconds",
         type=float,
-        default=2.0,
+        default=(
+            defaults.short_term_max_seconds
+        ),
     )
 
     parser.add_argument(
@@ -790,7 +1170,7 @@ def main():
     )
 
     print(
-        "SPECTRA CORRELATION v0.1"
+        "SPECTRA CORRELATION v0.3"
     )
 
     print(
