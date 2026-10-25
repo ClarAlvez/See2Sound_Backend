@@ -146,6 +146,11 @@ class ObjectCropper:
             raise ImportError(
                 "Ultralytics não está instalado. Instale com: pip install ultralytics"
             ) from error
+            
+        if not 0.0 <= padding_ratio <= 1.0:
+            raise ValueError(
+                "padding_ratio deve estar entre 0.0 e 1.0"
+            )
 
         self.model_name = model_name
         self.confidence_threshold = confidence_threshold

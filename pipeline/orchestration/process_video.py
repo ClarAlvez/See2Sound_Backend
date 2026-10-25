@@ -1557,7 +1557,7 @@ def process_video(
     # Voice Engine
     tts_rate: int = 170,
     tts_volume: float = 1.0,
-    voice_background_volume: float = 0.45,
+    voice_background_volume: float = 0.18,
     voice_description_volume: float = 1.0,
 
     # Controle

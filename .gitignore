@@ -22,6 +22,7 @@ data/external/
 data/models/
 data/datasets/
 data/kaggle/
+data/testes
 
 # =========================
 # Arquivos gerados pelo pipeline

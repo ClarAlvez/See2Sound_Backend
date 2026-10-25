@@ -10,9 +10,8 @@ ATMOSPHERE_MODEL_PATH = "data/models/Atmosphere/atmosphere_net_best.pt"
 ACTION_MODEL_PATH = "data/models/Actions/action_net_best.pt"
 
 NARRATIVE_MODEL_PATH = (
-    "data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf"
+    "data/models/qwen/qwen2.5-3b-instruct-q4_k_m.gguf"
 )
-
 
 def main():
     print("=" * 80)

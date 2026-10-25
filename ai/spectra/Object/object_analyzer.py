@@ -43,6 +43,7 @@ class ObjectAnalyzer:
         max_objects: int = 20,
         use_full_frame: bool = True,
         device: Optional[str] = None,
+        crop_padding_ratio: float = 0.40,
     ):
         self.object_model_path = object_model_path
         self.object_threshold = object_threshold
@@ -60,6 +61,7 @@ class ObjectAnalyzer:
             model_name=cropper_model_name,
             confidence_threshold=cropper_confidence_threshold,
             max_objects=max_objects,
+            padding_ratio=crop_padding_ratio,
             device=device,
         )
 
