@@ -1,8 +1,10 @@
 from pathlib import Path
+import logging
 from fastapi import UploadFile
 from starlette.concurrency import run_in_threadpool
 
 CHUNK_SIZE = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 class UploadTooLargeError(Exception):
     pass
@@ -23,10 +25,16 @@ async def save_upload_file(upload: UploadFile, destination: Path, max_size_bytes
                     output_file.write(chunk)
         except BaseException:
             if created:
-                destination.unlink(missing_ok=True)
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception("Failed to remove this operation's partial upload")
             raise
         return total_size
     try:
         return await run_in_threadpool(copy_upload)
     finally:
-        await upload.close()
+        try:
+            await upload.close()
+        except OSError:
+            logger.exception("Failed to close upload spool")
