@@ -1,12 +1,17 @@
+
+import pytest
+
+pytestmark = pytest.mark.media
 from pathlib import Path
 
-from pipeline.video.frames import extract_frames
 
 
-def test_extract_frames():
+def test_extract_frames(tmp_path):
+    from pipeline.video.frames import extract_frames
+
     result = extract_frames(
         video_path="data/raw_videos/corrida.mp4",
-        output_dir="data/extracted_frames",
+        output_dir=str(tmp_path / "frames"),
         interval_seconds=1.0
     )
 

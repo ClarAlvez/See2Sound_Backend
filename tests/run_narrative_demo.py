@@ -1,7 +1,7 @@
-from ai.narrative import LLMNarrativeGenerator
 
 
 def main():
+    from ai.narrative import LLMNarrativeGenerator
     generator = LLMNarrativeGenerator(
         model_path="data/models/llama/Llama-3.2-1B-Instruct-Q6_K_L.gguf",
         n_ctx=2048,

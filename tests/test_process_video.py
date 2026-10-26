@@ -1,36 +1,45 @@
-from pipeline.orchestration.process_video import process_video
+"""Manual example; import and pytest collection do not execute it."""
 
 
-result = process_video(
-    video_path="data/raw_videos/video_teste.mp4",
-    output_base_dir="data/output",
+def main():
+    from tempfile import mkdtemp
+    from pipeline.orchestration.process_video import process_video
 
-    scene_model_path="data/models/Scene/scene_net_best.pt",
-    person_model_path="data/models/Person/person_net_best.pt",
-    object_model_path="data/models/Object/object_net_best.pt",
-    atmosphere_model_path="data/models/Atmosphere/atmosphere_net_best.pt",
-    action_model_path="data/models/Actions/action_net_best.pt",
 
-    run_spectra=True,
-    run_narrative=False,
-    run_tts=False,
+    result = process_video(
+        video_path="data/raw_videos/video_teste.mp4",
+        output_base_dir=mkdtemp(prefix="see2sound_pipeline_demo_"),
 
-    spectra_scene_threshold=0.45,
-    spectra_person_threshold=0.50,
-    spectra_object_threshold=0.35,
-    spectra_atmosphere_threshold=0.50,
-    spectra_action_threshold=0.60,
-    spectra_top_k=10,
+        scene_model_path="data/models/Scene/scene_net_best.pt",
+        person_model_path="data/models/Person/person_net_best.pt",
+        object_model_path="data/models/Object/object_net_best.pt",
+        atmosphere_model_path="data/models/Atmosphere/atmosphere_net_best.pt",
+        action_model_path="data/models/Actions/action_net_best.pt",
 
-    use_person_cropper=True,
-    use_object_cropper=True,
-    object_cropper_confidence_threshold=0.25,
-    object_max_objects=20,
+        run_spectra=True,
+        run_narrative=False,
+        run_tts=False,
 
-    use_action_model=True,
-    use_action_person_cropper=True,
-    action_max_people=5,
-)
+        spectra_scene_threshold=0.45,
+        spectra_person_threshold=0.50,
+        spectra_object_threshold=0.35,
+        spectra_atmosphere_threshold=0.50,
+        spectra_action_threshold=0.60,
+        spectra_top_k=10,
 
-print("Pipeline finalizado.")
-print(result["artifacts"])
+        use_person_cropper=True,
+        use_object_cropper=True,
+        object_cropper_confidence_threshold=0.25,
+        object_max_objects=20,
+
+        use_action_model=True,
+        use_action_person_cropper=True,
+        action_max_people=5,
+    )
+
+    print("Pipeline finalizado.")
+    print(result["artifacts"])
+
+
+if __name__ == "__main__":
+    main()
