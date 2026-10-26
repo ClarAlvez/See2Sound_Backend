@@ -149,7 +149,7 @@ def run_epoch(model, loader, optimizer, device, pos_weights, threshold=0.5,
     total_known = 0.0
     all_targets, all_preds, all_masks = [], [], []
     with torch.set_grad_enabled(training):
-        for images, targets, mask in loader:
+        for batch_idx, (images, targets, mask) in enumerate(loader, start=1):
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
@@ -163,6 +163,16 @@ def run_epoch(model, loader, optimizer, device, pos_weights, threshold=0.5,
             known = float(mask.sum().item())
             total_loss += loss.item() * known
             total_known += known
+
+            if batch_idx == 1 or batch_idx % 50 == 0 or batch_idx == len(loader):
+                phase = "TRAIN" if training else "VALIDATION"
+
+                print(
+                    f"[{phase}] Batch {batch_idx}/{len(loader)} "
+                    f"| Loss={loss.item():.4f}",
+                    flush=True,
+                )
+
             if not training:
                 all_targets.append(targets.cpu().numpy().astype(bool))
                 all_preds.append((torch.sigmoid(logits) >= threshold).cpu().numpy().astype(bool))
