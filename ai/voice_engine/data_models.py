@@ -2,20 +2,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 
-class VoiceGenerationError(RuntimeError):
-    """Safe public failure; the original technical error is chained by the caller."""
-
-    def __init__(self, *, diagnostics: Dict[str, Any], mixing: bool = False):
-        message = (
-            "Falha na mixagem da audiodescrição. Consulte os logs do servidor."
-            if mixing else
-            "Nenhuma audiodescrição foi inserida devido a falhas técnicas na geração de voz. "
-            "Consulte os logs do servidor."
-        )
-        super().__init__(message)
-        self.diagnostics = diagnostics
-
-
 @dataclass
 class VoiceCue:
     index: int
@@ -35,9 +21,6 @@ class VoiceCue:
 
     inserted: bool = False
     skip_reason: Optional[str] = None
-
-    # Internal classification; legacy per-cue JSON fields remain unchanged.
-    outcome: str = "pending"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -88,10 +71,8 @@ class VoiceEngineResult:
 
     cues: List[VoiceCue]
 
-    diagnostics: Optional[Dict[str, Any]] = None
-
     def to_dict(self) -> Dict[str, Any]:
-        result = {
+        return {
             "source_audio_path": (
                 self.source_audio_path
             ),
@@ -115,6 +96,3 @@ class VoiceEngineResult:
                 for cue in self.cues
             ],
         }
-        if self.diagnostics is not None:
-            result["diagnostics"] = self.diagnostics
-        return result

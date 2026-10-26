@@ -1,9 +1,7 @@
-from pathlib import Path
-from tempfile import mkdtemp
+from ai.audio_description.tts_client import TTSClient
 
 
 def main():
-    from ai.audio_description.tts_client import TTSClient
     tts = TTSClient(
         rate=170,
         volume=1.0,
@@ -15,7 +13,7 @@ def main():
 
     output = tts.save_to_file(
         text="Uma pessoa corre pela rua durante a noite.",
-        output_path=str(Path(mkdtemp(prefix="see2sound_tts_demo_")) / "test_tts.wav"),
+        output_path="data/outputs/audio_descriptions/test_tts.wav",
     )
 
     print("Áudio gerado em:", output)

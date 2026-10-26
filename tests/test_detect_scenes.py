@@ -1,12 +1,7 @@
-
-import pytest
-
-pytestmark = pytest.mark.media
+from pipeline.video.scenes import detect_scene_changes
 
 
-def test_detect_scene_changes_returns_expected_structure(tmp_path):
-    from pipeline.video.scenes import detect_scene_changes
-
+def test_detect_scene_changes_returns_expected_structure():
     result = detect_scene_changes(
         video_path="data/raw_videos/teste.mp4",
         threshold=20.0,
@@ -19,9 +14,7 @@ def test_detect_scene_changes_returns_expected_structure(tmp_path):
     assert isinstance(result["scene_timestamps_seconds"], list)
 
 
-def test_detect_scene_changes_has_at_least_one_scene(tmp_path):
-    from pipeline.video.scenes import detect_scene_changes
-
+def test_detect_scene_changes_has_at_least_one_scene():
     result = detect_scene_changes(
         video_path="data/raw_videos/teste.mp4",
         threshold=20.0,
@@ -32,9 +25,7 @@ def test_detect_scene_changes_has_at_least_one_scene(tmp_path):
     assert result["scene_timestamps_seconds"][0] == 0
 
 
-def test_detect_scene_changes_timestamps_are_sorted(tmp_path):
-    from pipeline.video.scenes import detect_scene_changes
-
+def test_detect_scene_changes_timestamps_are_sorted():
     result = detect_scene_changes(
         video_path="data/raw_videos/teste.mp4",
         threshold=20.0,

@@ -1,10 +1,16 @@
 import argparse
 import json
-import tempfile
+import shutil
 from pathlib import Path
 
+from ai.spectra.predictor import SpectraPredictor
+from ai.spectra.Person.person_cropper import PersonCropper
+from ai.spectra.Object.object_analyzer import ObjectAnalyzer
 
+from ai.spectra.Correlation.config import CorrelationConfig
+from ai.spectra.Correlation.engine import CorrelationEngine
 
+from pipeline.video.frames import extract_frames
 
 
 def json_default(value):
@@ -52,14 +58,18 @@ def save_json(
 def reset_directory(
     directory,
 ):
-    """Create a fresh directory; refuse to overwrite an existing one."""
     directory = Path(
         directory
     )
 
+    if directory.exists():
+        shutil.rmtree(
+            directory
+        )
+
     directory.mkdir(
         parents=True,
-        exist_ok=False,
+        exist_ok=True,
     )
 
 
@@ -112,8 +122,6 @@ def collect_frame_paths(
 def create_person_predictor(
     model_path,
 ):
-    from ai.spectra.predictor import SpectraPredictor
-
     if not model_path:
         return None
 
@@ -140,8 +148,6 @@ def create_person_predictor(
 def create_object_analyzer(
     args,
 ):
-    from ai.spectra.Object.object_analyzer import ObjectAnalyzer
-
     if not args.object_model:
         return None
 
@@ -869,11 +875,6 @@ def build_parser():
 
 
 def main():
-    from ai.spectra.Person.person_cropper import PersonCropper
-    from ai.spectra.Correlation.config import CorrelationConfig
-    from ai.spectra.Correlation.engine import CorrelationEngine
-    from pipeline.video.frames import extract_frames
-
     parser = build_parser()
     args = parser.parse_args()
 
@@ -887,9 +888,9 @@ def main():
             f"{video_path}"
         )
 
-    output_parent = Path(args.output_dir)
-    output_parent.mkdir(parents=True, exist_ok=True)
-    output_dir = Path(tempfile.mkdtemp(prefix="run_", dir=output_parent))
+    output_dir = Path(
+        args.output_dir
+    )
 
     frames_output_dir = (
         output_dir

@@ -1,20 +1,14 @@
 
 import json
-import logging
 from pathlib import Path
 from typing import Any, Dict
 
-from ai.voice_engine.data_models import VoiceGenerationError
-
 from API.core.config import settings
-from API.core.errors import StoredDataError
 
 from API.services.job_store import (
     update_job,
     utc_now,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def run_generation_job(
@@ -22,17 +16,24 @@ def run_generation_job(
     video_path: str,
     options: Dict[str, Any],
 ):
+    update_job(
+        job_id,
+        status="processing",
+        started_at=utc_now(),
+        error=None,
+    )
+
+    output_dir = (
+        settings.generations_dir
+        / job_id
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     try:
-        update_job(
-            job_id,
-            status="processing",
-            started_at=utc_now(),
-            error=None,
-        )
-
-        output_dir = settings.generations_dir / job_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-
         from pipeline.orchestration.verified_pipeline import (
             process_video_verified,
         )
@@ -157,11 +158,6 @@ def run_generation_job(
             run_tts=run_tts,
         )
 
-        if run_tts and run_narrative and result.get("voice_engine") is None:
-            timeline = result.get("narrative", {}).get("timeline", [])
-            if not any((item.get("description") or "").strip() for item in timeline):
-                logger.info("job=%s voice_outcome=no_descriptions", job_id)
-
         result_path = (
             output_dir
             / "result.json"
@@ -189,37 +185,40 @@ def run_generation_job(
         )
 
     except Exception as error:
-        logger.exception("job=%s generation_failed", job_id)
-        try:
-            update_job(
-                job_id,
-                status="failed",
-                finished_at=utc_now(),
-                error=(str(error) if isinstance(error, VoiceGenerationError)
-                       else f"{type(error).__name__}: {error}"),
-            )
-        except Exception:
-            logger.exception("job=%s failed_state_persistence_failed", job_id)
-            # Preserve the processing/preparation error as the primary failure.
-            raise error from error.__cause__
+        print(
+            "[API] Geração falhou:",
+            repr(error),
+        )
+
+        update_job(
+            job_id,
+            status="failed",
+            finished_at=utc_now(),
+            error=(
+                f"{type(error).__name__}: "
+                f"{error}"
+            ),
+        )
 
 
 def load_generation_result(
     job_id: str,
     result_path: str,
 ) -> Dict[str, Any]:
-    try:
-        path = Path(result_path)
-        with path.open("r", encoding="utf-8") as file:
-            result = json.load(file)
-        if not isinstance(result, dict):
-            raise ValueError("Result must be an object")
-        if not isinstance(result.get("artifacts", {}), dict):
-            raise ValueError("Invalid artifacts container")
-        if result.get("voice_engine") is not None and not isinstance(result["voice_engine"], dict):
-            raise ValueError("Invalid voice result container")
-        return result
-    except FileNotFoundError as error:
-        raise StoredDataError("Arquivo de resultado não encontrado.") from error
-    except (OSError, ValueError, TypeError) as error:
-        raise StoredDataError("Resultado da geração está ilegível. Consulte os logs do servidor.") from error
+    path = Path(
+        result_path
+    )
+
+    if not path.exists():
+        raise FileNotFoundError(
+            "Arquivo de resultado "
+            "não encontrado."
+        )
+
+    with path.open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        return json.load(
+            file
+        )

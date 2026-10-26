@@ -1,5 +1,4 @@
 import json
-import logging
 import re
 import threading
 from datetime import datetime, timezone
@@ -10,7 +9,6 @@ from API.core.config import settings
 from API.core.errors import StoredDataError
 
 _store_lock = threading.RLock()
-logger = logging.getLogger(__name__)
 
 
 def utc_now() -> str:
@@ -75,7 +73,4 @@ def _write_job(job: Dict[str, Any]):
             file.flush()
         temporary_path.replace(path)
     finally:
-        try:
-            temporary_path.unlink(missing_ok=True)
-        except OSError:
-            logger.exception("job=%s temporary_job_cleanup_failed", job['job_id'])
+        temporary_path.unlink(missing_ok=True)

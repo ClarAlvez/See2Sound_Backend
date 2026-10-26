@@ -113,10 +113,7 @@ async def create_generation(
         logger.exception("job=%s stage=upload storage_failed", job_id)
         raise HTTPException(503, "Armazenamento indisponível. Verifique o espaço e as permissões do servidor.") from error
     finally:
-        try:
-            await video.close()
-        except OSError:
-            logger.exception("job=%s stage=upload close_failed", job_id)
+        await video.close()
         if reserved and not accepted:
             release_generation_slot()
         if saved and not accepted:
@@ -331,12 +328,6 @@ def download_artifact(
             detail=(
                 "Geração não encontrada."
             ),
-        )
-
-    if job["status"] == "failed":
-        raise HTTPException(
-            status_code=409,
-            detail="A geração falhou. Consulte o status da geração para detalhes.",
         )
 
     if job["status"] != "completed":

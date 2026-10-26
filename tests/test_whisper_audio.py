@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.media
-
 import json
 from pathlib import Path
 
+from pipeline.audio.whisperer import WhisperPauseDetector
 
 
 def save_json(data: dict, output_path: Path) -> None:
@@ -16,9 +13,7 @@ def save_json(data: dict, output_path: Path) -> None:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
 
-def test_whisper_audio_analysis(tmp_path):
-    from pipeline.audio.whisperer import WhisperPauseDetector
-
+def test_whisper_audio_analysis():
     """
     Teste de integração simples do whisperer.
 
@@ -28,7 +23,7 @@ def test_whisper_audio_analysis(tmp_path):
     - salva o resultado em JSON
     """
     audio_file = Path("data/output/audio/teste2.wav")
-    output_file = tmp_path / "whisper_audio_result.json"
+    output_file = Path("data/process_tests/whisper_audio_result.json")
 
     assert audio_file.exists(), f"Arquivo de áudio não encontrado: {audio_file}"
 

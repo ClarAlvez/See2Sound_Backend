@@ -1,4 +1,4 @@
-from tempfile import mkdtemp
+from pipeline.orchestration.process_video import process_video
 
 
 VIDEO_PATH = "data/raw_videos/video_teste.mp4"
@@ -14,8 +14,6 @@ NARRATIVE_MODEL_PATH = (
 )
 
 def main():
-    from pipeline.orchestration.process_video import process_video
-
     print("=" * 80)
     print("TESTE SEE2SOUND")
     print("Spectra -> Narrative")
@@ -23,7 +21,7 @@ def main():
 
     result = process_video(
         video_path=VIDEO_PATH,
-        output_base_dir=mkdtemp(prefix="see2sound_narrative_demo_"),
+        output_base_dir="data/output",
 
         scene_model_path=SCENE_MODEL_PATH,
         person_model_path=PERSON_MODEL_PATH,
