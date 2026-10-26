@@ -172,11 +172,6 @@ def test_port_preflight_reports_occupied_local_port(monkeypatch, capsys):
         server.bind(("127.0.0.1", 0))
         server.listen(1)
         assert diagnostic.port_available(server.getsockname()[1]) is False
-        # Drain the first probe before the CLI probe; otherwise Windows may time
-        # out on the deliberately unconsumed backlog rather than report a listener.
-        server.settimeout(2)
-        with server.accept()[0]:
-            pass
         monkeypatch.setattr(diagnostic, "load_settings", Mock(side_effect=AssertionError("Must stop before config")))
         assert diagnostic.main(["--skip-api", "--require-port-free", "--api-port", str(server.getsockname()[1])]) == 1
     assert "ocupada" in capsys.readouterr().out

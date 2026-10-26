@@ -56,15 +56,24 @@ def nearest_existing(path):
 
 
 def port_available(port):
-    """Read-only local connection probe; not a reservation against startup races."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.settimeout(0.5)
-        code = probe.connect_ex(("127.0.0.1", port))
-    if code == 0:
-        return False
-    if code in {errno.ECONNREFUSED, getattr(errno, "WSAECONNREFUSED", 10061)}:
-        return True
-    raise OSError(code, "Nao foi possivel determinar a disponibilidade da porta local")
+    """Try an IPv4 bind; release immediately (not a startup reservation).
+
+    A timed connect_ex can return WSAEWOULDBLOCK on Windows even without a
+    listener. Binding avoids that nonblocking connection path and also detects
+    sockets that are bound but not listening. Use the wildcard address to catch
+    wildcard listeners too: Windows can allow a specific bind alongside them.
+    Never enable SO_REUSEADDR here.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            if sys.platform == "win32":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            probe.bind(("0.0.0.0", port))
+    except OSError as error:
+        if error.errno in {errno.EADDRINUSE, 10048} or getattr(error, "winerror", None) == 10048:
+            return False
+        raise
+    return True
 
 
 def main(argv=None):
@@ -96,7 +105,7 @@ def main(argv=None):
             if not available:
                 return 1
         except OSError as error:
-            report(False, f"Verificacao da porta local: {error}")
+            report(False, f"Verificacao da porta local: resultado indeterminado: {error}")
             return 1
     try:
         settings = load_settings()
