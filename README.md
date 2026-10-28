@@ -181,18 +181,6 @@ Developed as part of the **See2Sound Project**.
 - 💫​ Clara Alves dos Santos — [GitHub](https://github.com/ClarAlvez)
 - 🐶​​ João Victor Cussolim   — [GitHub](https://github.com/JoaoCussolim)
 
-## Local API and presentation checks
-
-Run from the repository root, with the project's working Python environment:
-
-```powershell
-python -m uvicorn API.main:app --host 127.0.0.1 --port 8000 --workers 1
-```
-
-Use `--reload` only during development; restarting interrupts active generations.
-The API returns a full mixed WAV for synchronized playback with the original video.
-The Flutter player should mute the video's original audio while playing this WAV.
-
 See [the pre-presentation audit](AUDITORIA_PRE_APRESENTACAO_BACKEND.md) for the
 verified scope, current environment limitations, API contracts, tests and rollback.
 AI recommendations are in [the separate technical review](docs/AUDITORIA_IA_RECOMENDACOES.md).
