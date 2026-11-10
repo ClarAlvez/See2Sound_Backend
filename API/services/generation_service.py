@@ -157,6 +157,17 @@ def run_generation_job(
             run_tts=run_tts,
         )
 
+        from ai.voice_engine.extended_playback import (
+            extend_video_when_needed,
+        )
+
+        if isinstance(result.get("metadata"), dict):
+            extend_video_when_needed(
+                video_path=video_path,
+                result=result,
+                output_dir=output_dir,
+            )
+
         if run_tts and run_narrative and result.get("voice_engine") is None:
             timeline = result.get("narrative", {}).get("timeline", [])
             if not any((item.get("description") or "").strip() for item in timeline):
