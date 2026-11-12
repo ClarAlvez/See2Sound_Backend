@@ -17,6 +17,60 @@ from API.services.job_store import (
 logger = logging.getLogger(__name__)
 
 
+def _progress_callback(job_id, options):
+    """Weighted stage boundaries; no clock, inference hooks or background work."""
+    spectra = options.get("run_spectra", True)
+    narrative = spectra and options.get("run_narrative", True)
+    stages = [
+        ("metadata", 2, "Lendo metadados"),
+        ("audio_extraction", 4, "Extraindo áudio"),
+        ("speech_analysis", 15, "Analisando fala"),
+        ("frames", 5, "Extraindo quadros"),
+        ("scenes", 4, "Identificando cenas"),
+    ]
+    if spectra:
+        stages.extend([
+            ("spectra", 30, "Analisando cenas"),
+            ("initial_artifacts", 1, "Salvando análise inicial"),
+            ("xclip", 15, "Verificando ações"),
+            ("verification_processing", 5, "Processando análise verificada"),
+            ("verified_artifacts", 1, "Salvando análise verificada"),
+        ])
+    if narrative:
+        stages.append(("narrative", 15, "Gerando narrativa"))
+    if narrative and options.get("run_tts", True):
+        stages.append(("voice_engine", 15, "Gerando audiodescrição"))
+    stages.extend([
+        ("saving_artifacts", 1, "Finalizando artefatos"),
+        ("extended_playback", 5, "Finalizando vídeo"),
+        ("saving_result", 1, "Salvando resultado"),
+    ])
+    total = sum(weight for _, weight, _ in stages)
+    boundaries = {}
+    accumulated = 0
+    for stage, weight, label in stages:
+        boundaries[stage] = (int(99 * accumulated / total), label)
+        accumulated += weight
+    last_percent = -1
+    last_stage = None
+
+    def progress(stage):
+        nonlocal last_percent, last_stage
+        if stage not in boundaries:
+            return
+        percent, label = boundaries[stage]
+        if percent < last_percent or stage == last_stage:
+            return
+        try:
+            update_job(job_id, progress_percent=percent, stage=stage,
+                       stage_label=label, stage_current=None, stage_total=None)
+            last_percent, last_stage = percent, stage
+        except Exception:
+            logger.exception("job=%s progress_persistence_failed stage=%s", job_id, stage)
+
+    return progress
+
+
 def run_generation_job(
     job_id: str,
     video_path: str,
@@ -51,6 +105,8 @@ def run_generation_job(
             "run_tts",
             True,
         )
+
+        progress = _progress_callback(job_id, options)
 
         settings.validate_model_files(
             run_spectra=run_spectra,
@@ -155,12 +211,14 @@ def run_generation_job(
             run_spectra=run_spectra,
             run_narrative=run_narrative,
             run_tts=run_tts,
+            progress_callback=progress,
         )
 
         from ai.voice_engine.extended_playback import (
             extend_video_when_needed,
         )
 
+        progress("extended_playback")
         if isinstance(result.get("metadata"), dict):
             extend_video_when_needed(
                 video_path=video_path,
@@ -173,6 +231,7 @@ def run_generation_job(
             if not any((item.get("description") or "").strip() for item in timeline):
                 logger.info("job=%s voice_outcome=no_descriptions", job_id)
 
+        progress("saving_result")
         result_path = (
             output_dir
             / "result.json"

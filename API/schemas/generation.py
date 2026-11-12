@@ -35,6 +35,10 @@ class GenerationStatusResponse(BaseModel):
 
     options: Dict[str, Any]
     stage: Optional[str] = None
+    progress_percent: Optional[int] = Field(default=None, ge=0, le=100)
+    stage_label: Optional[str] = None
+    stage_current: Optional[int] = None
+    stage_total: Optional[int] = None
     stage_durations_seconds: Dict[str, float] = Field(default_factory=dict)
 
 

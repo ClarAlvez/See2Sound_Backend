@@ -1,10 +1,19 @@
-from ai.spectra.Object.object_intermediate import (ObjectCLIPVerifier, apply_object_intermediate, scene_for_narrative)
-from ai.narrative.person_fusion_narrative import PersonFusionNarrativeGenerator
+
+from ai.spectra.Object.object_intermediate import (
+    ObjectCLIPVerifier,
+    apply_object_intermediate,
+    scene_for_narrative,
+)
+from ai.narrative.person_fusion_narrative import (
+    PersonFusionNarrativeGenerator,
+)
 from ai.spectra.Person.person_intermediate import (
-    PersonCLIPVerifier, apply_person_intermediate
+    PersonCLIPVerifier,
+    apply_person_intermediate,
 )
 
 import os
+import logging
 from pathlib import Path
 
 import cv2
@@ -43,14 +52,33 @@ def corrections_enabled():
     )
 
 
+def is_xclip_decode_error(exc):
+    """
+    Identifica somente falhas conhecidas de leitura
+    de frames produzidas pelo XCLIPVerifier.
+
+    Não mascara erros de inferência, configuração
+    ou execução dos modelos.
+    """
+    message = str(exc)
+
+    return (
+        message.startswith("Falha ao ler frame ")
+        or message == "Falha ao avançar no vídeo."
+    )
+
+
 def run_xclip_comparison(
     video_path,
     spectra_outputs,
 ):
     if not spectra_outputs:
+        summary = build_summary([])
+        summary["skipped_windows"] = 0
+
         return {
             "scenes": [],
-            "summary": build_summary([]),
+            "summary": summary,
         }
 
     verifier = get_xclip_verifier()
@@ -71,6 +99,8 @@ def run_xclip_comparison(
         "[FUSION V2] Correções habilitadas:",
         enabled,
     )
+
+    total_skipped_windows = 0
 
     try:
         for index, scene in enumerate(
@@ -96,6 +126,7 @@ def run_xclip_comparison(
             )
 
             clips = []
+            skipped_windows = []
 
             for frame in scene.get(
                 "raw_frame_results", []
@@ -110,12 +141,47 @@ def run_xclip_comparison(
                     "s",
                 )
 
-                result = verifier.predict_clip(
-                    capture=capture,
-                    timestamp=timestamp,
-                    scene_start=scene_start,
-                    scene_end=scene_end,
-                )
+                # Uma falha de decodificação localizada
+                # não deve interromper toda a geração.
+                try:
+                    result = verifier.predict_clip(
+                        capture=capture,
+                        timestamp=timestamp,
+                        scene_start=scene_start,
+                        scene_end=scene_end,
+                    )
+
+                except RuntimeError as exc:
+                    if not is_xclip_decode_error(exc):
+                        raise
+
+                    total_skipped_windows += 1
+
+                    error_info = {
+                        "timestamp": timestamp,
+                        "reason": str(exc),
+                    }
+
+                    skipped_windows.append(
+                        error_info
+                    )
+
+                    print(
+                        "[XCLIP] AVISO:",
+                        "Falha de leitura na cena",
+                        index + 1,
+                        "tempo",
+                        timestamp,
+                        "s.",
+                        str(exc),
+                    )
+
+                    print(
+                        "[XCLIP] Ignorando somente "
+                        "esta janela e continuando."
+                    )
+
+                    continue
 
                 clips.append(result)
 
@@ -167,7 +233,21 @@ def run_xclip_comparison(
                 "xclip_clips": clips,
                 "comparison": comparison,
                 "correction_applied": applied,
+
+                # Informações adicionais de diagnóstico.
+                "skipped_windows": skipped_windows,
+                "skipped_windows_count": len(
+                    skipped_windows
+                ),
             }
+
+            if skipped_windows:
+                print(
+                    "[XCLIP] Cena",
+                    index + 1,
+                    "- janelas ignoradas:",
+                    len(skipped_windows),
+                )
 
             print(
                 "[FUSION V2] Aplicada:",
@@ -209,10 +289,21 @@ def run_xclip_comparison(
         enabled
     )
 
+    summary["skipped_windows"] = (
+        total_skipped_windows
+    )
+
     print(
         "[XCLIP] Comparação concluída:",
         summary,
     )
+
+    if total_skipped_windows > 0:
+        print(
+            "[XCLIP] AVISO: Foram ignoradas",
+            total_skipped_windows,
+            "janelas por falhas de leitura.",
+        )
 
     return {
         "scenes": spectra_outputs,
@@ -227,8 +318,21 @@ def process_video_verified(
     run_narrative=True,
     run_tts=True,
     run_xclip=True,
+    progress_callback=None,
     **pipeline_options,
 ):
+    def progress(stage):
+        if progress_callback is not None:
+            try:
+                progress_callback(stage)
+            except Exception:
+                logging.getLogger(__name__).exception("Progress callback failed: %s", stage)
+
+    def initial_progress(stage):
+        # Narrative/Voice have not run yet in the verified path.
+        if stage not in {"narrative", "voice_engine"}:
+            progress("initial_artifacts" if stage == "saving_artifacts" else stage)
+
     # Sem Spectra ou sem X-CLIP,
     # preserva o pipeline tradicional.
     if not run_spectra or not run_xclip:
@@ -238,6 +342,7 @@ def process_video_verified(
             run_spectra=run_spectra,
             run_narrative=run_narrative,
             run_tts=run_tts,
+            progress_callback=progress,
             **pipeline_options,
         )
 
@@ -250,6 +355,7 @@ def process_video_verified(
         run_spectra=True,
         run_narrative=False,
         run_tts=False,
+        progress_callback=initial_progress,
         **pipeline_options,
     )
 
@@ -261,6 +367,7 @@ def process_video_verified(
         "outputs", []
     )
 
+    progress("xclip")
     verified = run_xclip_comparison(
         video_path,
         spectra_outputs,
@@ -269,39 +376,109 @@ def process_video_verified(
     spectra_outputs = verified["scenes"]
     summary = verified["summary"]
 
-    # Person Intermediate V1: antes de salvar a Spectra e narrar.
-    person_enabled = os.getenv("SEE2SOUND_PERSON_INTERMEDIATE", "false").lower() in ("1", "true", "yes", "on")
+    progress("verification_processing")
+    # Person Intermediate V1:
+    # antes de salvar a Spectra e narrar.
+    person_enabled = os.getenv(
+        "SEE2SOUND_PERSON_INTERMEDIATE",
+        "false",
+    ).lower() in (
+        "1", "true", "yes", "on"
+    )
+
     if person_enabled:
         clip_verifier = PersonCLIPVerifier()
-        detection_cap = int(pipeline_options.get("person_max_people", 3))
+
+        detection_cap = int(
+            pipeline_options.get(
+                "person_max_people", 3
+            )
+        )
+
         spectra_outputs = [
-            apply_person_intermediate(scene, verifier=clip_verifier, detection_cap=detection_cap)
+            apply_person_intermediate(
+                scene,
+                verifier=clip_verifier,
+                detection_cap=detection_cap,
+            )
             for scene in spectra_outputs
         ]
-        for index, updated_scene in enumerate(spectra_outputs, 1):
-            info = updated_scene.get("person_intermediate", {})
-            print("[PERSON INTERMEDIATE]", index, info.get("count_type"), info.get("frame_counts"))
 
+        for index, updated_scene in enumerate(
+            spectra_outputs, 1
+        ):
+            info = updated_scene.get(
+                "person_intermediate", {}
+            )
 
-    # Object Intermediate V2: verificação independente antes da Narrative.
-    object_enabled = os.getenv("SEE2SOUND_OBJECT_INTERMEDIATE", "false").lower() in ("true", "1", "yes", "on")
+            print(
+                "[PERSON INTERMEDIATE]",
+                index,
+                info.get("count_type"),
+                info.get("frame_counts"),
+            )
+
+    # Object Intermediate V2:
+    # verificação independente antes da Narrative.
+    object_enabled = os.getenv(
+        "SEE2SOUND_OBJECT_INTERMEDIATE",
+        "false",
+    ).lower() in (
+        "true", "1", "yes", "on"
+    )
+
     if object_enabled:
-        object_apply = os.getenv("SEE2SOUND_OBJECT_APPLY_REMOVALS", "false").lower() in ("true", "1", "yes", "on")
-        object_add = os.getenv("SEE2SOUND_OBJECT_APPLY_ADDITIONS", "false").lower() in ("true", "1", "yes", "on")
-        object_hide = os.getenv("SEE2SOUND_OBJECT_SUPPRESS_NARRATIVE", "true").lower() in ("true", "1", "yes", "on")
+        object_apply = os.getenv(
+            "SEE2SOUND_OBJECT_APPLY_REMOVALS",
+            "false",
+        ).lower() in (
+            "true", "1", "yes", "on"
+        )
+
+        object_add = os.getenv(
+            "SEE2SOUND_OBJECT_APPLY_ADDITIONS",
+            "false",
+        ).lower() in (
+            "true", "1", "yes", "on"
+        )
+
+        object_hide = os.getenv(
+            "SEE2SOUND_OBJECT_SUPPRESS_NARRATIVE",
+            "true",
+        ).lower() in (
+            "true", "1", "yes", "on"
+        )
+
         verifier_obj = ObjectCLIPVerifier()
+
         spectra_outputs = [
-            apply_object_intermediate(scene, verifier=verifier_obj,
-                                      apply_removals=object_apply,
-                                      apply_additions=object_add,
-                                      suppress_narrative=object_hide)
+            apply_object_intermediate(
+                scene,
+                verifier=verifier_obj,
+                apply_removals=object_apply,
+                apply_additions=object_add,
+                suppress_narrative=object_hide,
+            )
             for scene in spectra_outputs
         ]
-        for i, scene in enumerate(spectra_outputs, 1):
-            info = scene.get("object_intermediate", {})
-            print("[OBJECT V2]", i, "add=", info.get("proposed_additions"),
-                  "remove=", info.get("proposed_removals"),
-                  "hide=", info.get("narrative_suppression"))
+
+        for i, scene in enumerate(
+            spectra_outputs, 1
+        ):
+            info = scene.get(
+                "object_intermediate", {}
+            )
+
+            print(
+                "[OBJECT V2]",
+                i,
+                "add=",
+                info.get("proposed_additions"),
+                "remove=",
+                info.get("proposed_removals"),
+                "hide=",
+                info.get("narrative_suppression"),
+            )
 
     spectra["outputs"] = (
         spectra_outputs
@@ -327,6 +504,7 @@ def process_video_verified(
         root / "voice_engine"
     )
 
+    progress("verified_artifacts")
     spectra_path = save_json(
         data=spectra_outputs,
         output_path=(
@@ -385,6 +563,7 @@ def process_video_verified(
     narrative_timeline = []
 
     if run_narrative and spectra_outputs:
+        progress("narrative")
         model_path = str(
             pipeline_options.get(
                 "narrative_model_path",
@@ -402,8 +581,13 @@ def process_video_verified(
             )
         )
 
-        # Objetos duvidosos são ocultados somente da cópia narrativa.
-        narrative_scenes = [scene_for_narrative(s) for s in spectra_outputs]
+        # Objetos duvidosos são ocultados
+        # somente da cópia narrativa.
+        narrative_scenes = [
+            scene_for_narrative(s)
+            for s in spectra_outputs
+        ]
+
         narrative_timeline = (
             generator
             .generate_timeline_from_dicts(
@@ -438,6 +622,7 @@ def process_video_verified(
     voice_result = None
 
     if run_tts and narrative_timeline:
+        progress("voice_engine")
         audio = result.get(
             "audio", {}
         )
@@ -505,4 +690,5 @@ def process_video_verified(
                 "voice_manifest"
             ] = manifest_path
 
+    progress("saving_artifacts")
     return result

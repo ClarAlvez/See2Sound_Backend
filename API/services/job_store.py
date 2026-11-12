@@ -28,7 +28,8 @@ def create_job(job_id: str, original_filename: str, input_path: str,
     job = {'job_id': job_id, 'status': 'queued', 'original_filename': original_filename,
            'input_path': input_path, 'upload_size': upload_size, 'options': options,
            'created_at': utc_now(), 'started_at': None, 'finished_at': None,
-           'result_path': None, 'error': None}
+           'result_path': None, 'error': None, 'progress_percent': 0,
+           'stage': None, 'stage_label': None, 'stage_current': None, 'stage_total': None}
     with _store_lock:
         if get_job_path(job_id).exists():
             raise FileExistsError('ID de geração já existe.')
@@ -61,7 +62,16 @@ def read_job(job_id: str) -> Dict[str, Any]:
 def update_job(job_id: str, **changes) -> Dict[str, Any]:
     with _store_lock:
         job = read_job(job_id)
+        previous_progress = job.get('progress_percent', 0)
         job.update(changes)
+        if job['status'] == 'completed':
+            job['progress_percent'] = 100
+        elif job['status'] == 'queued':
+            job['progress_percent'] = 0
+        elif job['status'] == 'failed':
+            job['progress_percent'] = previous_progress
+        elif 'progress_percent' in changes:
+            job['progress_percent'] = min(99, max(0, previous_progress, changes['progress_percent']))
         _write_job(job)
         return job
 

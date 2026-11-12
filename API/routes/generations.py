@@ -200,6 +200,12 @@ def get_generation_status(
         ),
         error=job.get("error"),
         stage=job.get("stage"),
+        progress_percent=(100 if job["status"] == "completed" else
+                          0 if job["status"] == "queued" else
+                          min(99, max(0, job.get("progress_percent", 0)))),
+        stage_label=job.get("stage_label"),
+        stage_current=job.get("stage_current"),
+        stage_total=job.get("stage_total"),
         stage_durations_seconds=job.get("stage_durations_seconds", {}),
         options=job.get(
             "options",
