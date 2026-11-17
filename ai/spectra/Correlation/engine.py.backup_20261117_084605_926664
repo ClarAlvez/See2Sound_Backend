@@ -1,0 +1,592 @@
+"""Correlation v0.5: orquestrador das cinco IAs da Spectra.
+
+Nao repete inferencia: os requesters consomem resultados de modelos ja executados.
+Person: tracking local + Re-ID global (herdados da v0.2.1).
+Object: tracking local, memoria semantica e relacoes probabilisticas.
+Actions: atributos por pessoa, nunca previsoes gerais atribuidas arbitrariamente.
+Scene/Atmosphere: contexto temporal de cena, sem inventar cortes de camera.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import torch
+
+from ai.spectra.Correlation.encoders import create_identity_encoder
+from ai.spectra.Correlation.config import CorrelationConfig
+from ai.spectra.Correlation.entities import PersonDetection
+from ai.spectra.Correlation.memory import EntityMemory
+from ai.spectra.Correlation.tracker import PersonTracker
+from ai.spectra.Correlation.reconciler import EntityReconciler
+from ai.spectra.Correlation.object_entities import ObjectDetection
+from ai.spectra.Correlation.object_memory import ObjectMemory
+from ai.spectra.Correlation.object_tracker import ObjectTracker
+from ai.spectra.Correlation.object_association import ObjectAssociationMemory, PersonObjectAssociator
+from ai.spectra.Correlation.action_memory import ActionMemory
+from ai.spectra.Correlation.feature_vectors import AttributeVectorMemory
+from ai.spectra.Correlation.context_memory import ContextMemory
+from ai.spectra.Correlation.presence_memory import PresenceMemory
+from ai.spectra.Correlation.speech_identity import SpeechIdentityResolver
+from ai.spectra.Correlation.audio.speaker_pipeline import SpeakerPipeline
+from ai.spectra.Correlation.requesters.transcription import extract_speech_analysis
+from ai.spectra.Correlation.pipeline_adapter import flatten_spectra_outputs, from_pipeline_output
+from ai.spectra.Correlation.requesters import (
+    PersonRequester, ObjectRequester, ActionsRequester, SceneRequester, AtmosphereRequester
+)
+
+
+class CorrelationEngine:
+    def __init__(self, config=None, identity_encoder=None, inference_bridge=None):
+        self.config = config or CorrelationConfig()
+        # Lazy: nao carrega ResNet quando embeddings ja vieram da pipeline.
+        self._identity_encoder = identity_encoder
+        self.inference_bridge = inference_bridge
+        self.person_requester = PersonRequester()
+        self.object_requester = ObjectRequester()
+        self.actions_requester = ActionsRequester(
+            min_score=float(getattr(self.config, 'correlation_action_min_score', 0.30)))
+        self.scene_requester = SceneRequester()
+        self.atmosphere_requester = AtmosphereRequester()
+        self.speech_identity_resolver = SpeechIdentityResolver(self.config)
+        self.speaker_pipeline = SpeakerPipeline(self.config)
+        self.reset_state()
+
+    @property
+    def identity_encoder(self):
+        if self._identity_encoder is None:
+            self._identity_encoder = create_identity_encoder(self.config)
+        return self._identity_encoder
+
+    def reset_state(self):
+        self.person_memory = EntityMemory(config=self.config)
+        self.person_tracker = PersonTracker(config=self.config)
+        self.person_reconciler = EntityReconciler(memory=self.person_memory, config=self.config)
+        self.object_memory = ObjectMemory(config=self.config)
+        self.object_tracker = ObjectTracker(config=self.config)
+        self.person_object_associator = PersonObjectAssociator(config=self.config)
+        self.person_object_memory = ObjectAssociationMemory(config=self.config)
+        self.action_memory = ActionMemory(config=self.config)
+        self.scene_memory = ContextMemory('scene',
+            min_observations=int(getattr(self.config, 'scene_min_observations', 2)),
+            min_mean_score=float(getattr(self.config, 'scene_min_mean_score', 0.50)))
+        self.atmosphere_memory = ContextMemory('atmosphere',
+            min_observations=int(getattr(self.config, 'atmosphere_min_observations', 2)),
+            min_mean_score=float(getattr(self.config, 'atmosphere_min_mean_score', 0.50)))
+        self.feature_memory = AttributeVectorMemory(
+            alpha=float(getattr(self.config, 'recent_attribute_alpha', 0.35)),
+            max_frame_records=int(getattr(self.config, 'feature_vector_max_frames', 10000)))
+        self.presence_memory = PresenceMemory(
+            gap_seconds=float(getattr(self.config, 'presence_reappearance_gap_seconds', 1.5)))
+        self.person_scenes = {}  # entity_id -> set(scene_id)
+        self.current_scene_id = None
+        self.current_scene_source = None
+        # Aliases legados da Correlation v0.3 (clientes existentes nao quebram).
+        self.memory = self.person_memory
+        self.tracker = self.person_tracker
+        self.reconciler = self.person_reconciler
+        self.object_associator = self.person_object_associator
+        self.object_association_memory = self.person_object_memory
+
+    @staticmethod
+    def _canonical(entity_id, remap):
+        visited = set()
+        while entity_id in remap and entity_id not in visited:
+            visited.add(entity_id)
+            entity_id = remap[entity_id]
+        return entity_id
+
+    def _scene_context(self, frame):
+        explicit = frame.get('scene_id') is not None
+        scene_id = str(frame['scene_id']) if explicit else 'scene_0001'
+        source = 'pipeline' if explicit else 'fallback_no_cut_inference'
+        is_change = bool(explicit and self.current_scene_source == 'pipeline'
+                         and self.current_scene_id is not None and scene_id != self.current_scene_id)
+        if is_change and getattr(self.config, 'reset_tracks_on_scene_change', True):
+            self.person_tracker.clear()
+            self.object_tracker.clear()
+        self.current_scene_id, self.current_scene_source = scene_id, source
+        return scene_id, source, is_change
+
+    def process_frame(self, frame):
+        if self.inference_bridge is not None:
+            frame = self.inference_bridge.enrich(frame)
+        frame_id = int(frame.get('frame_id', 0))
+        timestamp = float(frame.get('timestamp', 0.0))
+        scene_id, scene_id_source, scene_change = self._scene_context(frame)
+
+        # 1. Person: preserva track_id local e entity_id global.
+        person_inputs = self.person_requester.request(frame)
+        detections = self.build_detections(person_inputs, frame_id, timestamp, scene_id)
+        self.generate_missing_embeddings(detections)
+        track_matches = self.person_tracker.match(detections=detections, timestamp=timestamp)
+        # Reserva entidades com tracks ja identificados antes do Re-ID de outras pessoas.
+        reserved_ids = {m['entity_id'] for m in track_matches.values()}
+        assigned_ids = set()
+        people = []
+        for index, detection in enumerate(detections):
+            if index in track_matches:
+                matched = track_matches[index]
+                person_track_id = matched['track_id']
+                entity_id = matched['entity_id']
+                tracking_score = float(matched['score'])
+                identity_source, identity_score = 'track_inheritance', 1.0
+                self.person_memory.update_entity(entity_id=entity_id, detection=detection)
+                self.person_tracker.update_track(track_id=person_track_id, detection=detection)
+            else:
+                tracking_score = None
+                entity_id, reid_score = self.person_memory.find_reidentification(
+                    detection=detection, excluded_entity_ids=reserved_ids | assigned_ids)
+                if entity_id is None:
+                    entity_id = self.person_memory.create_entity(detection)
+                    identity_source, identity_score = 'new_entity', 1.0
+                else:
+                    identity_source, identity_score = 'reidentification', float(reid_score)
+                    self.person_memory.update_entity(entity_id=entity_id, detection=detection)
+                person_track_id = self.person_tracker.create_track(entity_id=entity_id, detection=detection)
+                self.person_memory.register_track(entity_id=entity_id, track_id=person_track_id)
+            assigned_ids.add(entity_id)
+            self.person_scenes.setdefault(entity_id, set()).add(scene_id)
+            self.feature_memory.update('person', entity_id, frame_id, timestamp, detection.attributes)
+            people.append({
+                'detection_id': detection.detection_id, 'track_id': person_track_id,
+                'entity_id': entity_id,
+                'display_name': PresenceMemory.display_name(entity_id),
+                'tracking_source': 'existing_track' if tracking_score is not None else 'new_track',
+                'tracking_score': round(tracking_score, 4) if tracking_score is not None else None,
+                'identity_source': identity_source, 'identity_score': round(identity_score, 4),
+                'correlation_source': identity_source, 'correlation_score': round(identity_score, 4),
+                'bbox': list(detection.bbox), 'crop_path': detection.crop_path,
+                'attributes': detection.attributes,
+            })
+
+        # 2. Actions: vincula observacoes ao mesmo detection_id, depois ao entity_id.
+        action_observations = self.actions_requester.request(frame, people)
+        action_by_entity = {}
+        for observation in action_observations:
+            eid = observation['entity_id']
+            scores = action_by_entity.setdefault(eid, {})
+            values = {}
+            for prediction in observation.get('predictions', []):
+                label, score = prediction['label'], float(prediction['score'])
+                scores[label] = max(score, scores.get(label, 0.0))
+                values[label] = max(score, values.get(label, 0.0))
+            self.action_memory.register(observation, frame_id, timestamp)
+            self.feature_memory.update('action', eid, frame_id, timestamp, values)
+
+        # 3. Object: classe e box; tracking separado do Person.
+        object_inputs = self.object_requester.request(frame)
+        object_detections = self.build_object_detections(object_inputs, frame_id, timestamp, scene_id)
+        object_matches = self.object_tracker.match(detections=object_detections, timestamp=timestamp)
+        objects = []
+        for index, detection in enumerate(object_detections):
+            original = object_inputs[index]
+            if index in object_matches:
+                matched = object_matches[index]
+                object_id, object_track_id = matched['object_id'], matched['track_id']
+                tracking_source, tracking_score = 'existing_object_track', float(matched['score'])
+                self.object_memory.update_object(object_id=object_id, detection=detection)
+                self.object_tracker.update_track(track_id=object_track_id, detection=detection)
+            else:
+                object_id = self.object_memory.create_object(detection)
+                object_track_id = self.object_tracker.create_track(object_id=object_id, detection=detection)
+                self.object_memory.register_track(object_id=object_id, track_id=object_track_id)
+                tracking_source, tracking_score = 'new_object', None
+            object_attributes = original.get('object_attributes') or {detection.label: detection.label_score}
+            self.feature_memory.update('object', object_id, frame_id, timestamp, object_attributes)
+            objects.append({
+                'detection_id': detection.detection_id, 'object_id': object_id,
+                'track_id': object_track_id, 'label': detection.label,
+                'label_score': round(detection.label_score, 4),
+                'detector_label': original.get('detector_label'),
+                'detector_score': original.get('detector_confidence'),
+                'classification_source': original.get('classification_source'),
+                'attributes': object_attributes,
+                'tracking_source': tracking_source,
+                'tracking_score': round(tracking_score, 4) if tracking_score is not None else None,
+                'bbox': list(detection.bbox), 'crop_path': detection.crop_path,
+            })
+
+        # 4. Relacoes: score geometrico, classificador e Actions independentes.
+        relations = self.person_object_associator.associate(
+            people=people, objects=objects, action_by_entity=action_by_entity)
+        for relation in relations:
+            if relation.get('accepted', True):
+                self.person_object_memory.register(relation, frame_id, timestamp)
+                relation_feature = f"{relation['relation']}:{relation['object_label']}"
+                self.feature_memory.update('relation', relation['entity_id'], frame_id, timestamp,
+                                           {relation_feature: relation['evidence_score']})
+
+        # 5. Contexto de Scene e Atmosphere sempre por cena; sem Re-ID de ambientes.
+        scene_result = self.scene_requester.request(frame)
+        atmosphere_result = self.atmosphere_requester.request(frame)
+        if scene_result['available']:
+            attributes = dict(scene_result['attributes'])
+            attributes.update({f'derived:{key}': value for key, value in scene_result['derived_attributes'].items()})
+            self.scene_memory.observe(scene_id, frame_id, timestamp, attributes)
+            self.feature_memory.update('scene', scene_id, frame_id, timestamp, attributes)
+        if atmosphere_result['available']:
+            attrs = atmosphere_result['attributes']
+            self.atmosphere_memory.observe(scene_id, frame_id, timestamp, attrs)
+            self.feature_memory.update('atmosphere', scene_id, frame_id, timestamp, attrs)
+
+        presence_events = self.presence_memory.observe(
+            frame_id, timestamp, scene_id, people, explicit_scene_change=scene_change)
+        return {
+            'frame_id': frame_id, 'timestamp': timestamp, 'scene_id': scene_id,
+            'scene_id_source': scene_id_source, 'scene_changed': scene_change,
+            'people': people, 'persons': people,  # segundo campo para clientes legados
+            'objects': objects, 'actions': action_observations,
+            'scene': scene_result, 'atmosphere': atmosphere_result,
+            'object_associations': relations, 'presence_events': presence_events,
+        }
+
+    def process_video(self, frames, speech_analysis=None, speaker_entity_map=None, entity_hints=None,
+                      *, diarization=None, active_speaker=None,
+                      run_diarization=False, run_active_speaker=False,
+                      audio_path=None, video_path=None):
+        # O JSON final da pipeline inclui audio.speech_analysis; preservar antes de achatar cenas.
+        pipeline_payload = frames if isinstance(frames, dict) else None
+        if speech_analysis is None and pipeline_payload is not None:
+            speech_analysis = extract_speech_analysis(pipeline_payload)
+        if isinstance(frames, dict):
+            frames = frames.get('_correlation_frames') or from_pipeline_output(frames)
+        elif frames and isinstance(frames[0], dict) and 'raw_frame_results' in frames[0]:
+            frames = flatten_spectra_outputs(frames)
+        self.reset_state()
+        ordered = sorted(frames, key=lambda f: (float(f.get('timestamp', 0.0)), int(f.get('frame_id', 0))))
+        # SEE2SOUND_PROGRESS_V1
+        from tools.pipeline_progress_v1 import emit_progress as _emit_progress
+        processed = []
+        _total_frames = len(ordered)
+        for _idx, frame in enumerate(ordered, 1):
+            processed.append(self.process_frame(frame))
+            _emit_progress("correlation", _idx, _total_frames, "quadros")
+        _emit_progress("correlation", None, None, "reconciliando identidades")
+        before = len(self.person_memory.entities)
+        reconciliation = self.person_reconciler.reconcile(processed)
+        remap = reconciliation.get('entity_remap', {})
+        self.person_object_memory.remap_entities(remap)
+        self.action_memory.remap_entities(remap)
+        self.feature_memory.remap_person_ids(remap)
+        remapped_scene_presence = {}
+        for eid, scenes in self.person_scenes.items():
+            target = self._canonical(eid, remap)
+            remapped_scene_presence.setdefault(target, set()).update(scenes)
+        self.person_scenes = remapped_scene_presence
+        for frame in processed:
+            for field in ('people', 'actions', 'object_associations'):
+                for item in frame.get(field, []):
+                    if 'entity_id' not in item:
+                        continue
+                    item['entity_id'] = self._canonical(item['entity_id'], remap)
+                    if field == 'people':
+                        item['display_name'] = PresenceMemory.display_name(item['entity_id'])
+        # Eventos narrativos sao reconstruidos APOS o reconciler; um alias
+        # fundido nao pode receber duas first_appearance independentes.
+        self.presence_memory = PresenceMemory(
+            gap_seconds=float(getattr(self.config, 'presence_reappearance_gap_seconds', 1.5)))
+        for frame in processed:
+            frame['presence_events'] = self.presence_memory.observe(
+                frame['frame_id'], frame['timestamp'], frame['scene_id'],
+                frame['people'], explicit_scene_change=frame['scene_changed'])
+        relations = self.person_object_memory.to_dict()
+        actions = self.action_memory.to_dict()
+        scenes = self.scene_memory.to_dict()
+        atmospheres = self.atmosphere_memory.to_dict()
+        vectors = self.feature_memory.to_dict()
+        entities = self.person_memory.to_dict()
+        profiles = {}
+        for entity_id, entity_data in entities.items():
+            profiles[entity_id] = {
+                'entity_id': entity_id,
+                'display_name': PresenceMemory.display_name(entity_id),
+                'introduced': entity_id in self.presence_memory._people,
+                'track_ids': entity_data.get('track_ids', []),
+                'scenes_seen': sorted(self.person_scenes.get(entity_id, set())),
+                'person_attributes': vectors['person'].get(entity_id),
+                'action_attributes': vectors['action'].get(entity_id),
+                'relation_attributes': vectors['relation'].get(entity_id),
+                'actions': actions.get(entity_id, []),
+                'objects': relations.get(entity_id, []),
+                'aliases': entity_data.get('aliases', {}),
+            }
+        # v0.6 runs after Person Re-ID/reconciliation: diarization and ASD only
+        # consume canonical person IDs. Both models are OPT-IN to control cost.
+        audio_source = (pipeline_payload or {}).get('audio') or {}
+        audio_source = audio_source.get('speech_analysis') or {}
+        if audio_path is None:
+            audio_path = audio_source.get('audio_path') or (speech_analysis or {}).get('audio_path')
+        if video_path is None:
+            video_path = (pipeline_payload or {}).get('source_video_path')
+        original_scene_outputs = ((pipeline_payload or {}).get('spectra') or {}).get('outputs') or []
+        scene_intervals = [
+            {'start_time': item['start_time'], 'end_time': item['end_time']}
+            for item in original_scene_outputs
+            if isinstance(item, dict) and 'start_time' in item and 'end_time' in item
+        ]
+        _emit_progress("correlation", None, None, "pyannote / Light-ASD")
+        speaker_result = self.speaker_pipeline.run(
+            speech_analysis=speech_analysis or {}, processed_frames=processed,
+            entities=entities, remap=remap, audio_path=audio_path,
+            video_path=video_path, diarization=diarization,
+            active_speaker=active_speaker, run_diarization=run_diarization,
+            run_active_speaker=run_active_speaker, scene_intervals=scene_intervals)
+        # Explicit manual links always override automated links.
+        speaker_map = dict(speaker_result['speaker_links']['speaker_entity_map'])
+        speaker_map.update(speaker_entity_map or {})
+        speech_analysis = speaker_result['speech_analysis']
+        audio_identity = self.speech_identity_resolver.resolve(
+            speech_analysis or {}, processed, entities,
+            pipeline_payload=pipeline_payload, speaker_entity_map=speaker_map,
+            entity_hints=entity_hints, entity_remap=remap)
+        # CharacterGraph v1: separar nome da voz de identidade visual. Somente
+        # confirmar nomes em person_XXXX quando voz e visual forem vinculados.
+        _emit_progress("correlation", None, None, "CharacterGraph / SFace")
+        from ai.spectra.Correlation.character_graph import build_character_graph
+        character_graph, audio_identity, v10_links = build_character_graph(
+            audio_identity, processed, entities, speaker_result['active_speaker'],
+            diarization=speaker_result['diarization'], config=self.config,
+            manual_verified_map=speaker_entity_map, entity_remap=remap)
+        speaker_result['legacy_speaker_links_v08'] = speaker_result['speaker_links']
+        speaker_result['speaker_links'] = v10_links
+        # The Whisper model itself has no speaker labels; Community-1 does.
+        # Do not retain the pre-v0.6 warning after successful diarization.
+        if speaker_result['diarization'].get('available'):
+            audio_identity['diarization_available'] = True
+            audio_identity['diarization_source'] = 'pyannote_community_1'
+            audio_identity['warnings'] = [
+                msg for msg in audio_identity.get('warnings', [])
+                if 'Whisper atual nao fornece diarizacao' not in msg
+            ]
+        confirmed_names = audio_identity['confirmed_names']
+        for entity_id, profile in profiles.items():
+            profile['name_candidates'] = audio_identity['name_candidates'].get(entity_id, [])
+            profile['resolved_name'] = confirmed_names.get(entity_id)
+            profile['name_status'] = 'confirmed' if entity_id in confirmed_names else (
+                'candidate' if profile['name_candidates'] else 'unknown')
+            if entity_id in confirmed_names:
+                profile['display_name'] = confirmed_names[entity_id]
+                entities[entity_id].setdefault('aliases', {})[confirmed_names[entity_id]] = 1.0
+        # Alterar somente o display_name (nunca entity_id) apos obter evidencias verificadas.
+        for frame in processed:
+            for person in frame.get('people', []):
+                entity_id = person['entity_id']
+                person['resolved_name'] = confirmed_names.get(entity_id)
+                if entity_id in confirmed_names:
+                    person['display_name'] = confirmed_names[entity_id]
+            for event in frame.get('presence_events', []):
+                entity_id = event['entity_id']
+                event['resolved_name'] = confirmed_names.get(entity_id)
+                if entity_id in confirmed_names:
+                    event['display_name'] = confirmed_names[entity_id]
+        presence_output = self.presence_memory.to_dict()
+        for event in presence_output.get('events', []):
+            entity_id = event['entity_id']
+            event['resolved_name'] = confirmed_names.get(entity_id)
+            if entity_id in confirmed_names:
+                event['display_name'] = confirmed_names[entity_id]
+        for entity_id, record in presence_output.get('people', {}).items():
+            record['resolved_name'] = confirmed_names.get(entity_id)
+            if entity_id in confirmed_names:
+                record['display_name'] = confirmed_names[entity_id]
+
+        return {
+            'task_name': 'correlation', 'version': '1.0.0',
+            'modules': ['person', 'object', 'action', 'scene', 'atmosphere', 'speech_identity', 'diarization', 'active_speaker'],
+            'identity_encoder': {'type': getattr(self.config, 'identity_encoder_type', 'resnet'),
+                                 'name': (self._identity_encoder.name if self._identity_encoder is not None
+                                          else 'resnet:' + str(getattr(self.config, 'identity_backbone', 'resnet18'))),
+                                 'embedding_dimension': (self._identity_encoder.embedding_dimension if self._identity_encoder is not None
+                                          else (2048 if getattr(self.config, 'identity_backbone', 'resnet18') == 'resnet50' else 512)),
+                                 'initialized': self._identity_encoder is not None},
+            'frame_count': len(processed), 'track_count': self.person_tracker.total_tracks_created,
+            'object_track_count': self.object_tracker.total_tracks_created,
+            'entity_count_before_reconciliation': before,
+            'entity_count': len(self.person_memory.entities), 'object_count': len(self.object_memory.objects),
+            'reconciliation': reconciliation, 'frames': processed,
+            'entities': entities, 'objects': self.object_memory.to_dict(),
+            'person_object_relations': relations, 'person_actions': actions,
+            'scenes': scenes, 'atmospheres': atmospheres,
+            'feature_vectors': vectors, 'entity_profiles': profiles,
+            'presence': presence_output,
+            'character_graph': character_graph,
+            'audio_identity': audio_identity,
+            'audio_diarization': speaker_result['diarization'],
+            'active_speaker': speaker_result['active_speaker'],
+            'speaker_links': speaker_result['speaker_links'],
+            'legacy_speaker_links_v08': speaker_result['legacy_speaker_links_v08'],
+            'speaker_pipeline_warnings': speaker_result['warnings'],
+        }
+
+    def build_detections(self, raw_people, frame_id, timestamp, scene_id):
+        result = []
+        for i, person in enumerate(raw_people):
+            bbox = person.get('bbox')
+            if bbox is None or len(bbox) != 4:
+                continue
+            embedding = person.get('embedding')
+            if embedding is not None and not isinstance(embedding, torch.Tensor):
+                embedding = torch.as_tensor(embedding, dtype=torch.float32)
+            result.append(PersonDetection(
+                detection_id=person.get('detection_id') or f'frame_{frame_id:06d}_person_{i:02d}',
+                frame_id=frame_id, timestamp=timestamp,
+                bbox=tuple(float(x) for x in bbox),
+                crop_path=person.get('crop_path'),
+                attributes=person.get('attributes') or {}, embedding=embedding, scene_id=scene_id,
+            ))
+        return result
+
+    def build_object_detections(self, raw_objects, frame_id, timestamp, scene_id):
+        result = []
+        for i, item in enumerate(raw_objects):
+            bbox, label = item.get('bbox'), item.get('label')
+            if bbox is None or len(bbox) != 4 or not label:
+                continue
+            result.append(ObjectDetection(
+                detection_id=item.get('detection_id') or f'frame_{frame_id:06d}_object_{i:02d}',
+                frame_id=frame_id, timestamp=timestamp, scene_id=scene_id,
+                label=str(label), label_score=float(item.get('label_score', 0.0)),
+                bbox=tuple(float(x) for x in bbox), crop_path=item.get('crop_path'),
+                detector_confidence=item.get('detector_confidence'),
+            ))
+        return result
+
+    def generate_missing_embeddings(self, detections):
+        pending = [d for d in detections if d.embedding is None and d.crop_path]
+        if not pending:
+            return
+        embeddings = self.identity_encoder.encode_batch([d.crop_path for d in pending])
+        if len(embeddings) != len(pending):
+            raise RuntimeError('IdentityEncoder retornou numero errado de embeddings.')
+        for detection, embedding in zip(pending, embeddings):
+            detection.embedding = embedding
+
+
+def _resolve_crop_paths(frames, base_directory):
+    """Resolve paths relativos sem duplicar a raiz ja contida em caminhos existentes."""
+    base_directory = Path(base_directory)
+    for frame in frames:
+        entries = list(frame.get('people', frame.get('persons', [])) or [])
+        entries += list(frame.get('objects') or [])
+        raw_obj = (frame.get('raw') or {}).get('object') or {}
+        entries += list(raw_obj.get('crop_results') or [])
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            crop_path = entry.get('crop_path')
+            if not crop_path:
+                continue
+            path = Path(crop_path)
+            if path.is_absolute() or path.exists():
+                continue
+            candidate = base_directory / path
+            if candidate.exists():
+                entry['crop_path'] = str(candidate.resolve())
+
+
+def load_input_json(input_path, preserve_payload=False):
+    input_path = Path(input_path)
+    with open(input_path, encoding='utf-8') as handle:
+        value = json.load(handle)
+    if isinstance(value, list):
+        frames = flatten_spectra_outputs(value) if value and 'raw_frame_results' in value[0] else value
+    else:
+        frames = from_pipeline_output(value)
+    if not isinstance(frames, list):
+        raise ValueError('JSON deve ser lista ou dict com frames[].')
+    _resolve_crop_paths(frames, input_path.parent)
+    if preserve_payload:
+        if isinstance(value, dict):
+            # Mantem os intervalos de cena originais para alinhar falas longas.
+            return {**value, 'frames': frames} if 'spectra' not in value else {**value, '_correlation_frames': frames}
+        return {'frames': frames}
+    return frames
+
+
+def save_output_json(result, output_path):
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as handle:
+        json.dump(result, handle, indent=2, ensure_ascii=False)
+
+
+def build_parser():
+    defaults = CorrelationConfig()
+    parser = argparse.ArgumentParser(description='Spectra Correlation v0.6 - 5 IAs, diarizacao, ASD e nomes')
+    parser.add_argument('--input', required=True, help='JSON com frames e outputs Spectra')
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--short-term-threshold', type=float, default=defaults.short_term_min_score)
+    parser.add_argument('--reid-threshold', type=float, default=defaults.reidentification_min_score)
+    parser.add_argument('--max-track-seconds', type=float, default=defaults.short_term_max_seconds)
+    parser.add_argument('--keep-tracks-between-scenes', action='store_true')
+    parser.add_argument('--speech-analysis', default=None, help='JSON do Whisper para entradas sem audio.speech_analysis')
+    parser.add_argument('--speaker-map', default=None, help='JSON com associacoes speaker_id -> entity_id verificadas')
+    parser.add_argument('--name-hints', default=None, help='JSON com evidencias manuais de nome por segmento')
+    parser.add_argument('--diarize', action='store_true', help='Executar pyannote uma vez no WAV')
+    parser.add_argument('--active-speaker', action='store_true', help='Executar Light-ASD nos trechos de fala')
+    parser.add_argument('--diarization-json', default=None, help='Reutilizar JSON de diarizacao salvo')
+    parser.add_argument('--asd-json', default=None, help='Reutilizar JSON de scores Light-ASD salvo')
+    parser.add_argument('--video-path', default=None, help='Video original (se o JSON nao incluir source_video_path)')
+    parser.add_argument('--audio-file', default=None, help='WAV extraido (se o JSON nao incluir audio.speech_analysis.audio_path)')
+    parser.add_argument('--light-asd-root', default='third_party/Light-ASD')
+    parser.add_argument('--light-asd-device', choices=('auto','cpu','cuda'), default='auto')
+    parser.add_argument('--confirm-asd-names', action='store_true',
+                        help='Permitir confirmar autoapresentacoes com evidencias ASD altas (experimental)')
+    parser.add_argument('--speaker-artifacts', default=None,
+                        help='Salvar JSON isolado da diarizacao, ASD e vinculos ao lado do principal')
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    config = CorrelationConfig(short_term_min_score=args.short_term_threshold,
+                               reidentification_min_score=args.reid_threshold,
+                               short_term_max_seconds=args.max_track_seconds,
+                               reset_tracks_on_scene_change=not args.keep_tracks_between_scenes,
+                               light_asd_root=args.light_asd_root, light_asd_device=args.light_asd_device,
+                               speaker_auto_confirm_names=args.confirm_asd_names)
+    engine = CorrelationEngine(config=config)
+    with open(args.input, encoding='utf-8') as handle:
+        payload = json.load(handle)
+    frames = load_input_json(args.input)
+    if isinstance(payload, dict):
+        payload['_correlation_frames'] = frames
+        # Evita que a lista de metadados de extracao se confunda com frames visuais.
+        if 'spectra' not in payload:
+            payload['frames'] = frames
+    else:
+        payload = frames
+    def read_optional(path):
+        if not path:
+            return None
+        with open(path, encoding='utf-8') as handle:
+            return json.load(handle)
+    result = engine.process_video(
+        payload, speech_analysis=read_optional(args.speech_analysis),
+        speaker_entity_map=read_optional(args.speaker_map),
+        entity_hints=read_optional(args.name_hints),
+        diarization=read_optional(args.diarization_json),
+        active_speaker=read_optional(args.asd_json),
+        run_diarization=args.diarize, run_active_speaker=args.active_speaker,
+        audio_path=args.audio_file, video_path=args.video_path)
+    save_output_json(result, args.output)
+    if args.speaker_artifacts:
+        save_output_json({
+            'audio_diarization': result['audio_diarization'],
+            'active_speaker': result['active_speaker'],
+            'speaker_links': result['speaker_links'],
+            'audio_identity': result['audio_identity'],
+        }, args.speaker_artifacts)
+    print(f"Correlation {result['version']} | frames={result['frame_count']} | "
+          f"pessoas={result['entity_count']} | objetos={result['object_count']} | "
+          f"cenas={len(result['scenes'])} | atmosferas={len(result['atmospheres'])}")
+    print(f"Diarizacao: {len(result['audio_diarization']['speakers'])} vozes | "
+          f"ASD: {len(result['active_speaker'].get('turn_scores', []))} evidencias | "
+          f"links: {sum(x['entity_id'] is not None for x in result['speaker_links']['links'].values())}")
+    print(f"Audio: {len(result['audio_identity']['segments'])} falas | "
+          f"{sum(len(items) for items in result['audio_identity']['name_candidates'].values())} candidatos | "
+          f"{len(result['audio_identity']['confirmed_names'])} nomes confirmados")
+
+
+if __name__ == '__main__':
+    main()

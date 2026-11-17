@@ -1,0 +1,160 @@
+"""pyannote Community-1 locally, with exclusive-speaker alignment for Whisper.
+
+No model is loaded during normal Correlation imports. This module never modifies
+Whisper's text/timestamps. `speaker_coverage` is timeline overlap, NOT a posterior.
+"""
+from __future__ import annotations
+import math
+from pathlib import Path
+
+
+def overlap(a, b, c, d):
+    return max(0., min(float(b), float(d)) - max(float(a), float(c)))
+
+
+def _annotation_turns(annotation):
+    if annotation is None:
+        return []
+    turns = []
+    # pyannote >=4: `for segment, speaker in annotation` (preferred).
+    # Older Annotation: `.itertracks(yield_label=True)`.
+    if hasattr(annotation, 'itertracks'):
+        iterable = ((segment, label) for segment, _, label in annotation.itertracks(yield_label=True))
+    else:
+        iterable = iter(annotation)
+    for turn, speaker in iterable:
+        a, b = float(turn.start), float(turn.end)
+        if math.isfinite(a) and math.isfinite(b) and a >= 0 and b > a:
+            turns.append({'start': round(a, 3), 'end': round(b, 3), 'speaker_id': str(speaker)})
+    return sorted(turns, key=lambda x:(x['start'], x['end'], x['speaker_id']))
+
+
+def normalize_diarization(value):
+    """Unifies pyannote return, serialized cache, or a list of turns."""
+    if isinstance(value, list):
+        raw = value
+        exclusive = value
+    elif isinstance(value, dict):
+        raw = value.get('turns') or value.get('segments') or value.get('diarization') or []
+        exclusive = value.get('exclusive_turns') or value.get('exclusive_diarization') or raw
+    else:
+        raw = _annotation_turns(getattr(value, 'speaker_diarization', None))
+        exclusive = _annotation_turns(getattr(value, 'exclusive_speaker_diarization', None)) or raw
+    def normalize(items):
+        out = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                a, b = float(item['start']), float(item['end'])
+            except (TypeError, ValueError, KeyError):
+                continue
+            label = item.get('speaker_id') or item.get('speaker')
+            if label is None or not math.isfinite(a) or not math.isfinite(b) or a < 0 or b <= a:
+                continue
+            out.append({'start': round(a, 3), 'end': round(b, 3), 'speaker_id': str(label)})
+        return sorted(out, key=lambda x:(x['start'],x['end'],x['speaker_id']))
+    raw, exclusive = normalize(raw), normalize(exclusive)
+    return {
+        'model': 'pyannote/speaker-diarization-community-1',
+        'turns': raw,
+        'exclusive_turns': exclusive,
+        'speakers': sorted({x['speaker_id'] for x in raw+exclusive}),
+        'available': bool(raw or exclusive),
+    }
+
+
+class SpeakerDiarizer:
+    def __init__(self, model_id='pyannote/speaker-diarization-community-1', device=None, token=None):
+        self.model_id, self.device, self.token = model_id, device, token
+        self._pipeline = None
+
+    def _load(self):
+        if self._pipeline is not None:
+            return self._pipeline
+        try:
+            import torch
+            from pyannote.audio import Pipeline
+        except ImportError as exc:
+            raise RuntimeError('Diarizacao exige pyannote.audio: python -m pip install pyannote.audio') from exc
+        token = self.token
+        if token is None:
+            try:
+                from huggingface_hub import get_token
+                token = get_token()  # includes `hf auth login` credential; do not print it
+            except ImportError:
+                pass
+        try:
+            pipeline = Pipeline.from_pretrained(self.model_id, token=token)
+        except TypeError as exc:
+            # Compatibility only for previous pyannote version.
+            if 'token' not in str(exc):
+                raise
+            pipeline = Pipeline.from_pretrained(self.model_id, use_auth_token=token)
+        if pipeline is None:
+            raise RuntimeError('pyannote nao carregou. Aceite as condicoes do modelo no Hugging Face.')
+        device = self.device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        pipeline.to(torch.device(device))
+        self._pipeline = pipeline
+        return pipeline
+
+    def diarize(self, audio_path, *, num_speakers=None, min_speakers=None, max_speakers=None):
+        audio_path = Path(audio_path)
+        if not audio_path.is_file():
+            raise FileNotFoundError(f'Arquivo de audio nao encontrado: {audio_path}')
+        kwargs = {}
+        for key, value in {'num_speakers': num_speakers, 'min_speakers': min_speakers,
+                           'max_speakers': max_speakers}.items():
+            if value is not None:
+                kwargs[key] = int(value)
+        result = normalize_diarization(self._load()(str(audio_path), **kwargs))
+        result['audio_path'] = str(audio_path)
+        return result
+
+
+def align_transcription(speech_analysis, diarization, *, min_coverage=0.35, min_margin=0.10):
+    """Return a copy of the official Whisper output enriched with speaker_id.
+
+    For multiple speakers or weak overlap, leave the utterance unassigned.
+    A single Whisper segment may contain two voices; this cannot infer word-level
+    speakers and is flagged as ambiguous, not silently split.
+    """
+    analysis = dict(speech_analysis or {})
+    diag = normalize_diarization(diarization)
+    turns = diag['exclusive_turns']
+    original = analysis.get('speech_segments')
+    if original is None:
+        original = analysis.get('segments', [])
+    aligned = []
+    for i, item in enumerate(original or []):
+        if not isinstance(item, dict):
+            continue
+        seg = dict(item)
+        try:
+            a, b = float(seg['start']), float(seg['end'])
+        except (KeyError, TypeError, ValueError):
+            aligned.append(seg)
+            continue
+        duration = max(b-a, 0.001)
+        votes = {}
+        for turn in turns:
+            covered = overlap(a,b,turn['start'],turn['end'])
+            if covered > 0:
+                key = turn['speaker_id']
+                votes[key] = votes.get(key, 0.0) + covered
+        ordered = sorted(votes.items(), key=lambda x:x[1], reverse=True)
+        best = ordered[0] if ordered else None
+        second = ordered[1][1] if len(ordered)>1 else 0.0
+        cov = min(1.0, best[1]/duration) if best else 0.0
+        margin = (best[1]-second)/duration if best else 0.0
+        ambiguous = bool(best and (cov < min_coverage or margin < min_margin))
+        seg['speaker_id'] = best[0] if best and not ambiguous else None
+        seg['speaker_overlap_coverage'] = round(cov,4)
+        seg['speaker_overlap_margin'] = round(margin,4)
+        seg['speaker_ambiguous'] = ambiguous
+        seg['diarization_source'] = 'exclusive_pyannote' if turns else 'unavailable'
+        aligned.append(seg)
+    analysis['speech_segments'] = aligned
+    # Keep the usual Whisper output intact (wording and full text unchanged).
+    analysis['diarization'] = diag
+    return analysis

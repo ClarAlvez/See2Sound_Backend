@@ -1,3 +1,4 @@
+"""Configuracao conservadora; preserva as opcoes da v0.2/v0.3."""
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -5,197 +6,117 @@ from typing import List, Optional
 @dataclass
 class CorrelationConfig:
     device: Optional[str] = None
+    # Person / IdentityEncoder
+    # CharacterGraph v1.0: detector+encoder de rostos especializados.
+    # Sem modelos, preserva IDs isolados; nunca faz merge por ResNet genérica.
+    character_face_enabled: bool = True
+    character_yunet_path: str = 'data/models/Face/face_detection_yunet_2023mar.onnx'
+    character_sface_path: str = 'data/models/Face/face_recognition_sface_2021dec.onnx'
+    character_max_face_entities: int = 260
+    character_max_face_crops: int = 3
+    character_min_asd_turns: int = 3
 
-    # ============================================================
-    # Identity Encoder
-    # ============================================================
-
-    identity_encoder_type: str = "resnet"
-
-    identity_backbone: str = "resnet18"
-
+    identity_encoder_type: str = 'resnet'
+    identity_backbone: str = 'resnet18'
     identity_pretrained: bool = True
-
     identity_model_path: Optional[str] = None
-
     identity_embedding_size: Optional[int] = None
-
-    # ============================================================
-    # Tracking local
-    # ============================================================
-
+    # Person tracker
     short_term_max_seconds: float = 2.0
-
     short_term_min_score: float = 0.45
     short_term_min_spatial_score: float = 0.30
-
     embedding_weight: float = 0.45
     iou_weight: float = 0.30
     center_weight: float = 0.20
     attribute_weight: float = 0.05
-
     reset_tracks_on_scene_change: bool = True
-
-    # ============================================================
-    # Atributos
-    # ============================================================
-
+    # Attribute evidence and gallery
     attribute_positive_threshold: float = 0.50
     attribute_evidence_threshold: float = 0.50
-
     recent_attribute_alpha: float = 0.35
-
-    # ============================================================
-    # Galeria visual
-    # ============================================================
-
     max_example_crops_per_entity: int = 5
-
     max_embedding_history: int = 12
-
     gallery_top_k: int = 3
-
     embedding_history_duplicate_threshold: float = 0.985
-
-    # ============================================================
-    # Re-identificação entre tracks
-    # ============================================================
-
+    # Global reidentification
     reidentification_min_score: float = 0.72
     reidentification_min_margin: float = 0.05
-
     reid_gallery_weight: float = 0.45
     reid_centroid_weight: float = 0.25
-
     reid_stable_attribute_weight: float = 0.15
     reid_appearance_attribute_weight: float = 0.10
-
     reid_temporal_weight: float = 0.05
-
     temporal_reid_window_seconds: float = 30.0
     temporal_reid_floor: float = 0.15
-
-    # ============================================================
-    # Reconciliação
-    # ============================================================
-
-    enable_reconciliation: bool = True
-
+    # Reconciliation
+    enable_reconciliation: bool = False
     reconcile_min_score: float = 0.78
-
     reconcile_gallery_top_k: int = 3
-
     reconcile_gallery_weight: float = 0.45
     reconcile_centroid_weight: float = 0.20
-
     reconcile_stable_attribute_weight: float = 0.15
     reconcile_appearance_attribute_weight: float = 0.10
-
     reconcile_temporal_weight: float = 0.10
-
     reconcile_temporal_window_seconds: float = 12.0
     reconcile_temporal_floor: float = 0.05
-
-    # ============================================================
-    # Atributos estáveis
-    # ============================================================
-
-    stable_attributes: List[str] = field(
-        default_factory=lambda: [
-            "blonde_hair",
-            "brown_hair",
-            "black_hair",
-            "red_hair",
-            "gray_hair",
-
-            "short_hair",
-            "long_hair",
-            "curly_hair",
-            "straight_hair",
-        ]
-    )
-
-    # ============================================================
-    # Aparência atual
-    # ============================================================
-
-    appearance_attributes: List[str] = field(
-        default_factory=lambda: [
-            "red_clothes",
-            "blue_clothes",
-            "black_clothes",
-            "white_clothes",
-            "green_clothes",
-            "yellow_clothes",
-
-            "glasses",
-            "hat",
-            "cap",
-            "backpack",
-            "bag",
-        ]
-    )
-
-    accessory_attributes: List[str] = field(
-        default_factory=lambda: [
-            "glasses",
-            "hat",
-            "cap",
-            "backpack",
-            "bag",
-        ]
-    )
-
-    # ============================================================
-    # Object tracking
-    # ============================================================
-
+    stable_attributes: List[str] = field(default_factory=lambda: [
+        'blonde_hair', 'brown_hair', 'black_hair', 'red_hair', 'gray_hair',
+        'short_hair', 'long_hair', 'curly_hair', 'straight_hair'])
+    appearance_attributes: List[str] = field(default_factory=lambda: [
+        'red_clothes', 'blue_clothes', 'black_clothes', 'white_clothes',
+        'green_clothes', 'yellow_clothes', 'glasses', 'hat', 'cap', 'backpack', 'bag'])
+    accessory_attributes: List[str] = field(default_factory=lambda: [
+        'glasses', 'hat', 'cap', 'backpack', 'bag'])
+    # Object tracker and associations
     object_track_max_seconds: float = 2.0
-
     object_track_min_score: float = 0.35
     object_track_min_spatial_score: float = 0.20
-
     object_track_iou_weight: float = 0.55
     object_track_center_weight: float = 0.45
-
-    # ============================================================
-    # Person ↔ Object
-    # ============================================================
-
     object_association_min_score: float = 0.45
     object_association_min_margin: float = 0.05
-
     object_relation_min_observations: int = 2
+    object_min_label_score: float = 0.45
+    object_relation_min_evidence: float = 0.55
+    object_relation_persistent_min_evidence: float = 0.60
+    object_wearable_labels: List[str] = field(default_factory=lambda: ['glasses'])
+    object_carried_labels: List[str] = field(default_factory=lambda: [
+        'bag', 'backpack', 'handbag', 'suitcase', 'umbrella'])
+    object_held_labels: List[str] = field(default_factory=lambda: [
+        'phone', 'book', 'paper', 'letter', 'document', 'photo', 'bottle',
+        'cup', 'remote', 'key', 'knife', 'weapon'])
+    # Actions / Scene / Atmosphere
+    correlation_action_min_score: float = 0.30
+    action_min_observations: int = 2
+    action_min_mean_score: float = 0.50
+    scene_min_observations: int = 2
+    scene_min_mean_score: float = 0.50
+    atmosphere_min_observations: int = 2
+    atmosphere_min_mean_score: float = 0.50
+    # Global vector memory, intros / reappearances
+    feature_vector_max_frames: int = 10000
+    presence_reappearance_gap_seconds: float = 1.50
 
-    object_wearable_labels: List[str] = field(
-        default_factory=lambda: [
-            "glasses",
-        ]
-    )
+    # Audio / transcricao: tolerancia visual em segundos (Whisper retorna segmentos)
+    speech_frame_tolerance_seconds: float = 1.0
 
-    object_carried_labels: List[str] = field(
-        default_factory=lambda: [
-            "bag",
-            "backpack",
-            "handbag",
-            "suitcase",
-            "umbrella",
-        ]
-    )
-
-    object_held_labels: List[str] = field(
-        default_factory=lambda: [
-            "phone",
-            "book",
-            "paper",
-            "letter",
-            "document",
-            "photo",
-            "bottle",
-            "cup",
-            "remote",
-            "key",
-            "knife",
-            "weapon",
-        ]
-    )
+    # ============================================================
+    # Audio: optional diarization / audiovisual grounding (v0.6)
+    # ============================================================
+    diarization_model_id: str = 'pyannote/speaker-diarization-community-1'
+    diarization_device: Optional[str] = None
+    speaker_alignment_min_coverage: float = 0.35
+    speaker_alignment_min_margin: float = 0.10
+    light_asd_root: str = 'third_party/Light-ASD'
+    light_asd_device: str = 'auto'
+    light_asd_timeout_seconds: int = 900
+    light_asd_max_turn_seconds: float = 8.0
+    light_asd_max_total_seconds: float = 180.0
+    speaker_min_confirming_turns: int = 2
+    speaker_asd_min_raw_score: float = 0.0
+    speaker_asd_min_turn_margin: float = 0.3
+    speaker_min_support_fraction: float = 0.7
+    speaker_min_face_coverage: float = 0.5
+    speaker_min_face_frames: int = 12
+    # Keep names as candidates by default, including confident ASD mappings.
+    speaker_auto_confirm_names: bool = False

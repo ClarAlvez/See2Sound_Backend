@@ -61,6 +61,12 @@ def extract_frames_from_capture(
     """
     Percorre o vídeo e salva frames com base no intervalo calculado.
     """
+    # SEE2SOUND_PROGRESS_V1
+    from tools.pipeline_progress_v1 import emit_progress as _emit_progress
+    try:
+        _total_video_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or None
+    except (TypeError, ValueError, OverflowError):
+        _total_video_frames = None
     current_frame_index = 0
     saved_frames_count = 0
     saved_frame_paths: List[str] = []
@@ -81,9 +87,11 @@ def extract_frames_from_capture(
             save_frame(frame, output_path)
             saved_frames_count += 1
             saved_frame_paths.append(str(output_path.resolve()))
+            _emit_progress("frames", current_frame_index + 1, _total_video_frames, "quadros")
 
         current_frame_index += 1
 
+    _emit_progress("frames", current_frame_index, _total_video_frames, "quadros")
     return saved_frames_count, saved_frame_paths
 
 

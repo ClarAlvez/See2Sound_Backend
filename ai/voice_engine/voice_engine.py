@@ -125,9 +125,12 @@ class VoiceEngine:
         # Processa cada descrição narrativa
         # ====================================================
 
+        # SEE2SOUND_PROGRESS_V1
+        from tools.pipeline_progress_v1 import emit_progress as _emit_progress
         for index, item in enumerate(
             narrative_timeline
         ):
+            _emit_progress("voice_engine", index, len(narrative_timeline), "narracoes")
             text = (
                 item.get(
                     "description",
@@ -336,6 +339,7 @@ class VoiceEngine:
                 cue
             )
 
+        _emit_progress("voice_engine", len(narrative_timeline), len(narrative_timeline), "narracoes")
         inserted = sum(1 for cue in cues if cue.inserted)
         technical_failures = sum(1 for cue in cues if cue.outcome.endswith("_failed"))
         no_pause = sum(1 for cue in cues if cue.outcome == "no_available_pause")

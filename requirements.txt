@@ -1,4 +1,4 @@
-opencv-python
+opencv-python==4.13.0.92
 moviepy
 numpy
 ffmpeg-python
@@ -24,3 +24,5 @@ pytorchvideo
 fvcore
 iopath
 av
+pyannote.audio
+python_speech_features

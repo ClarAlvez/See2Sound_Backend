@@ -1976,6 +1976,8 @@ class LLMNarrativeGenerator:
 
         max_memory_gap = 8.0
         time_tolerance = 0.15
+        # SEE2SOUND_PROGRESS_V1
+        from tools.pipeline_progress_v1 import emit_progress as _emit_progress
 
         for (
             index,
@@ -1983,6 +1985,7 @@ class LLMNarrativeGenerator:
         ) in enumerate(
             inputs
         ):
+            _emit_progress("narrative", index, len(inputs), "cenas")
             output = (
                 self.generate(
                     item
@@ -2173,6 +2176,7 @@ class LLMNarrativeGenerator:
             )
 
 
+        _emit_progress("narrative", len(inputs), len(inputs), "cenas")
         return outputs
 
     # ========================================================

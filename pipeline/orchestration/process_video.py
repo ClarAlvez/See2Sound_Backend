@@ -1245,8 +1245,11 @@ def build_spectra_outputs_for_scenes(
     )
 
     spectra_outputs = []
+    from tools.pipeline_progress_v1 import emit_progress as _emit_progress
+    _spectra_total = len(scene_intervals)
 
-    for interval in scene_intervals:
+    for _spectra_index, interval in enumerate(scene_intervals):
+        _emit_progress("spectra", _spectra_index, _spectra_total, "cenas")
         selected_frame_records = (
             select_frame_records_for_interval(
                 frame_records=frame_records,
@@ -1367,6 +1370,7 @@ def build_spectra_outputs_for_scenes(
 
         spectra_outputs.append(scene_output)
 
+    _emit_progress("spectra", _spectra_total, _spectra_total, "cenas")
     return spectra_outputs
 
 
@@ -1374,11 +1378,20 @@ def build_spectra_outputs_for_scenes(
 # Narrative
 # ============================================================
 
+    # SEE2SOUND_PROGRESS_V1
 
 def generate_narrative_timeline(
     spectra_outputs: List[Dict[str, Any]],
     narrative_model_path: str,
+    correlation_result: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
+    # SPECTRA_NARRATIVE_V07: utiliza entidades globais antes da Voice Engine.
+    if correlation_result is not None:
+        from ai.narrative.correlation_narrative import CorrelationNarrativeGenerator
+        generator = CorrelationNarrativeGenerator(model_path=narrative_model_path)
+        return generator.generate_timeline_from_dicts(
+            spectra_outputs, correlation_result=correlation_result,
+        )
     generator = create_narrative_generator(
         model_path=narrative_model_path,
     )
@@ -1561,6 +1574,15 @@ def process_video(
     voice_description_volume: float = 1.0,
 
     # Controle
+    # SPECTRA_CORRELATION_V06_BRIDGE (opt-in, backward-compatible)
+    run_correlation: bool = False,
+    correlation_run_diarization: bool = False,
+    correlation_run_active_speaker: bool = False,
+    correlation_light_asd_root: str = 'third_party/Light-ASD',
+    # SEE2SOUND_CORRELATION_V08
+    correlation_auto_confirm_names: bool = False,
+    narrative_focus_mode: bool = False,
+    narrative_max_per_minute: int = 4,
     run_spectra: bool = True,
     run_narrative: bool = True,
     run_tts: bool = True,
@@ -1896,6 +1918,39 @@ def process_video(
                 )
             )
 
+    # Correlation receives the existing Whisper output and the 5 Spectra
+    # results BEFORE Narrative; no neural inference is duplicated.
+    correlation_result = None
+    correlation_json_path = None
+    if run_correlation:
+        progress("correlation")
+        if not spectra_outputs:
+            print('[Correlation] Sem saidas Spectra; Correlation ignorada.')
+        else:
+            from ai.spectra.Correlation.pipeline_integration import correlate_spectra_with_speech
+            correlation_result = correlate_spectra_with_speech(
+                spectra_outputs=spectra_outputs,
+                whisper_result=whisper_result,
+                source_video_path=str(validated_video_path),
+                audio_path=str(resolve_audio_path(audio_result)),
+                run_diarization=correlation_run_diarization,
+                run_active_speaker=correlation_run_active_speaker,
+                light_asd_root=correlation_light_asd_root,
+                auto_confirm_names=correlation_auto_confirm_names,
+                scene_intervals=scene_intervals,
+            )
+            # Retain correlated scene context for future Narrative consumption;
+            # no promise that the current prompt reads these keys yet.
+            for scene_output in spectra_outputs:
+                scene_output.setdefault('context', {})['correlation_v06'] = {
+                    'speaker_links': correlation_result.get('speaker_links', {}).get('links', {}),
+                    'resolved_names': correlation_result.get('audio_identity', {}).get('confirmed_names', {}),
+                }
+            correlation_json_path = save_json(
+                data=correlation_result,
+                output_path=output_dirs['spectra_dir'] / 'correlation_v06.json',
+            )
+
     narrative_timeline: List[
         Dict[str, Any]
     ] = []
@@ -1916,8 +1971,18 @@ def process_video(
                     narrative_model_path=(
                         narrative_model_path
                     ),
+                    correlation_result=correlation_result,
                 )
             )
+
+    # SEE2SOUND_NARRATIVE_FOCUS_V08: filtro opcional APOS o Narrative e ANTES de TTS.
+    if run_narrative and narrative_focus_mode and narrative_timeline:
+        from ai.narrative.focus_filter_v08 import select_focused_descriptions
+        before_count = len(narrative_timeline)
+        narrative_timeline = select_focused_descriptions(
+            narrative_timeline, correlation_result=correlation_result,
+            max_per_minute=narrative_max_per_minute)
+        print(f'[Narrative Focus] {before_count} -> {len(narrative_timeline)} descricoes')
 
     voice_result: Optional[
         Dict[str, Any]
@@ -2022,7 +2087,7 @@ def process_video(
                 "voice_manifest"
             ] = manifest_path
 
-    return build_processing_result(
+    result = build_processing_result(
         video_path=validated_video_path,
         metadata_result=metadata_result,
         audio_result=audio_result,
@@ -2038,3 +2103,7 @@ def process_video(
             saved_artifacts
         ),
     )
+    if correlation_result is not None:
+        result['correlation'] = correlation_result
+        result['artifacts']['correlation_v06_json'] = str(correlation_json_path)
+    return result
